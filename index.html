@@ -131,7 +131,7 @@
 
 <header>
   <h1>root 時間割スケジューラ</h1>
-  <div class="sub">ユニット（メンバー固定）を各コマに自動配置 ・ 制約チェック付き ・ データはこのPC内のみに保存されます</div>
+  <div class="sub">ユニット（メンバー固定）を各コマに自動配置 ・ 制約チェック付き ・ データはこのPC内のみに保存されます <a href="#" onclick="openChangelog();return false" style="color:var(--muted);font-size:11px;text-decoration:none;margin-left:6px">更新履歴</a></div>
   <div class="season-bar">
     <span class="muted">シーズン：</span>
     <select id="seasonSelect"></select>
@@ -310,6 +310,15 @@
   <button class="btn small" onclick="resetSample()">このシーズンをサンプルに戻す</button>
   <button class="btn small danger" onclick="clearAll()">このシーズンを空にする</button>
 </footer>
+
+<!-- 更新履歴モーダル -->
+<div class="modal-bg" id="changelogModal" onclick="if(event.target===this)this.classList.remove('open')">
+  <div class="modal" style="max-width:560px">
+    <h3>更新履歴</h3>
+    <div id="changelogBody" style="font-size:13px"></div>
+    <div style="text-align:right;margin-top:10px"><button class="btn small" onclick="document.getElementById('changelogModal').classList.remove('open')">閉じる</button></div>
+  </div>
+</div>
 
 <!-- 復元一覧モーダル -->
 <div class="modal-bg" id="restoreModal">
@@ -1758,6 +1767,22 @@ function renderViolations(res){
   const chips=softG.map((g,i)=>`<button class="viol-chip" data-vc="${i}" onclick="toggleViolChip(${i})">${g.t}<span class="n">${g.arr.length}件</span></button>`).join("");
   list.innerHTML=summary+hardHtml+
     (softG.length?`<div class="viol-chips">${chips}</div><div id="violChipDetail" style="display:none"></div>`:"");
+}
+/* 更新履歴（新しい順。リリース時にここへ追記する） */
+const CHANGELOG=[
+ ["2026-07-19","チェック結果の表示を改善：要対応（未配置など）は常に展開、その他は種類ごとのチップ→クリックで詳細"],
+ ["2026-07-19","時間割の色分けを講師別→5教科別に変更（数=赤・英=黄・国=水色・社=緑・理=オレンジ）"],
+ ["2026-07-18","Web公開開始（URLで開けば常に最新版。データは従来通り各自のブラウザ内に保存）"],
+ ["2026-07月中旬","通常授業（毎週同じ時間割）モード／コマの追加・削除／新規登録の既定値設定"],
+ ["2026-07月中旬","スプレッドシート出力（全体・個人・教室別）／並び替えボタン一式／ダッシュボード"],
+ ["2026-07月上旬","手動配置モード・待機エリア・クリック/ドラッグでのコマ移動／📌コマ固定／部分自動配置"],
+ ["2026-07月上旬","かけもち受講／時間割提出チェック／△（できれば避けたい時間）と余裕重み／自動バックアップ"],
+ ["2026-07月上旬","初版：シーズン管理・自動生成エンジン・違反チェック・履歴・CSV出力"],
+];
+function openChangelog(){
+  document.getElementById("changelogBody").innerHTML=CHANGELOG.map(([d,m])=>
+    `<div style="display:flex;gap:10px;padding:7px 0;border-bottom:1px dashed var(--line)"><span class="muted" style="white-space:nowrap;font-size:11.5px">${d}</span><span>${m}</span></div>`).join("");
+  document.getElementById("changelogModal").classList.add("open");
 }
 let violSoftGroups=[];
 function toggleViolChip(i){
