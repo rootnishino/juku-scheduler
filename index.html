@@ -1,0 +1,2462 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>root 時間割スケジューラ</title>
+<style>
+  :root{
+    --bg:#f6f7f9; --card:#fff; --line:#e3e6ea; --ink:#1f2733; --muted:#6b7480;
+    --accent:#2f6df6; --accent-soft:#e8f0ff; --ok:#12805c; --warn:#c47b00; --bad:#d1443b;
+    --chip:#eef1f5;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,"Hiragino Kaku Gothic ProN","Yu Gothic",Meiryo,sans-serif;
+       background:var(--bg);color:var(--ink);font-size:14px;line-height:1.6}
+  header{background:var(--card);border-bottom:1px solid var(--line);padding:14px 20px}
+  header h1{margin:0;font-size:18px}
+  header .sub{color:var(--muted);font-size:12px;margin-top:2px}
+  .season-bar{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:10px;font-size:13px}
+  .season-bar select{border:1px solid var(--line);border-radius:6px;padding:5px 7px;font:inherit;background:#fff;min-width:150px}
+  nav{display:flex;gap:4px;padding:8px 12px;background:var(--card);border-bottom:1px solid var(--line);
+      position:sticky;top:0;z-index:19;flex-wrap:wrap}
+  nav button{border:1px solid transparent;background:transparent;padding:7px 13px;border-radius:8px;
+             cursor:pointer;font-size:13px;color:var(--muted);font-weight:600}
+  nav button.active{background:var(--accent-soft);color:var(--accent)}
+  main{margin:0 auto;padding:18px} /* 全タブとも画面幅いっぱいを使う */
+  .panel{display:none}
+  .panel.active{display:block}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:16px}
+  .card h2{margin:0 0 4px;font-size:15px}
+  .card .hint{color:var(--muted);font-size:12px;margin:0 0 12px}
+  table{border-collapse:collapse;width:100%;font-size:13px}
+  th,td{border:1px solid var(--line);padding:6px 8px;text-align:left;vertical-align:middle}
+  th{background:#fafbfc;font-weight:600;color:var(--muted);font-size:12px}
+  input[type=text],input[type=number],select{border:1px solid var(--line);border-radius:6px;padding:5px 7px;font:inherit;width:100%;background:#fff}
+  input[type=number]{width:72px}
+  input[type=checkbox]{width:22px;height:22px;accent-color:var(--accent);cursor:pointer;vertical-align:middle}
+  input[type=checkbox]:focus-visible{outline:3px solid var(--accent-soft);outline-offset:1px}
+  .avail-grid td:focus-visible{outline:3px solid var(--accent);outline-offset:-3px}
+  .btn{border:1px solid var(--line);background:#fff;border-radius:8px;padding:7px 13px;cursor:pointer;font:inherit;font-weight:600}
+  .btn:hover{background:#f2f4f7}
+  .btn.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+  .btn.primary:hover{filter:brightness(1.05)}
+  .btn.small{padding:4px 9px;font-size:12px}
+  .btn.danger{color:var(--bad)}
+  .row-actions{white-space:nowrap;width:1%}
+  .toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
+  .tag{display:inline-block;background:var(--chip);border-radius:20px;padding:2px 9px;font-size:11px;margin:1px 2px}
+  .tag.part{background:#fff4e0;color:var(--warn)}
+  .tag.reg{background:#e3f6ee;color:var(--ok)}
+  .members-cell{max-width:280px}
+  .grid-scroll{overflow-x:auto}
+  .wk-table{table-layout:fixed;width:100%;min-width:860px} /* 全曜日の列幅を均等に固定 */
+  .wk-table td{font-size:11px;line-height:1.35;word-break:break-word}
+  .wk-table th.koma{position:sticky;left:0;background:#fafbfc;z-index:2;width:104px}
+  .wk-table td.koma{position:sticky;left:0;background:#fafbfc;font-weight:600;z-index:1}
+  .sess{border-radius:6px;padding:3px 5px;margin:2px 0;border:1px solid var(--line)}
+  .sess .subj{font-weight:700}
+  .sess .mem{color:var(--muted)}
+  .koma-late{color:var(--bad)}
+  .koma-avoid{color:var(--warn)}
+  .stat{display:inline-flex;flex-direction:column;background:#fafbfc;border:1px solid var(--line);
+        border-radius:10px;padding:10px 14px;margin:0 8px 8px 0;min-width:120px}
+  .stat b{font-size:22px}
+  .stat span{color:var(--muted);font-size:12px}
+  .viol{border-left:3px solid var(--warn);background:#fffaf0;padding:8px 12px;border-radius:6px;margin-bottom:8px}
+  .viol.hard{border-color:var(--bad);background:#fdf1f0}
+  .viol .vt{font-weight:700;font-size:12px}
+  .modal-bg{position:fixed;inset:0;background:rgba(20,28,40,.45);display:none;align-items:center;justify-content:center;z-index:50;padding:16px}
+  .modal-bg.open{display:flex}
+  .modal{background:#fff;border-radius:14px;padding:18px;max-width:640px;width:100%;max-height:88vh;overflow:auto}
+  .modal h3{margin:0 0 4px}
+  .avail-grid{border-collapse:collapse;width:100%;font-size:12px}
+  .avail-grid th,.avail-grid td{border:1px solid var(--line);text-align:center;padding:0}
+  .avail-grid td{cursor:pointer;height:26px;user-select:none}
+  .avail-grid td.on{background:var(--accent);color:#fff}
+  .avail-grid td.off:hover{background:var(--accent-soft)}
+  .avail-grid td.closed{background:repeating-linear-gradient(45deg,#f7f8fa,#f7f8fa 5px,#eceef1 5px,#eceef1 10px)}
+  .avail-grid td.on.closed{background:var(--accent)}
+  .avail-grid td.tri{background:#fff4e0;color:#c47b00;font-weight:700}
+  .avail-grid td.tri.closed{background:repeating-linear-gradient(45deg,#fff4e0,#fff4e0 5px,#f7e7c8 5px,#f7e7c8 10px)}
+  .avail-grid td.off.na{background:#fdf1f0}
+  .avail-grid td.off.na.closed{background:repeating-linear-gradient(45deg,#fdf1f0,#fdf1f0 5px,#f4e2e0 5px,#f4e2e0 10px)}
+  .fit-table{border-collapse:collapse;width:auto} /* 自然幅にして transform で文字ごと拡縮 */
+  .fit-table th{font-size:10px;white-space:nowrap;border:1px solid var(--line);background:#fafbfc;padding:1px 3px}
+  .fit-table td{font-size:9px;line-height:1.15;border:1px solid var(--line);padding:1px 2px;vertical-align:top;min-width:52px}
+  .fit-table td.koma,.fit-table th.koma{min-width:44px;background:#fafbfc;font-size:9px}
+  .fit-table .daysep{border-left:2px solid #9aa2ad !important}
+  .fit-sess{border-radius:2px;padding:0 2px;margin:0}
+  .fit-sess b{font-size:9px}
+  .fit-wrap{transform-origin:top left}
+  /* 全体時間割ビュー: mainの最大幅を突き抜けて画面全幅を使う */
+  .desk-table th{font-size:11px;white-space:nowrap}
+  .desk-table td{min-width:88px;font-size:10.5px;line-height:1.3;vertical-align:top;padding:3px 4px}
+  .desk-table td.koma,.desk-table th.koma{position:sticky;left:0;background:#fafbfc;z-index:1;min-width:70px}
+  .desk-table td.daysep,.desk-table th.daysep{border-left:2px solid #c9ced5}
+  .sess-box{border-radius:4px;padding:2px 4px;margin:1px 0}
+  .sess-box b{font-size:11px}
+  .wk-table td.na-cell{background:repeating-linear-gradient(45deg,#eef0f3,#eef0f3 6px,#e4e7ec 6px,#e4e7ec 12px)}
+  /* 待機エリア（未配置・退避コマ置き場）: スクロールしても画面上部に残る */
+  #stageTray{position:sticky;top:46px;z-index:15;background:#fffdf5;border:2px dashed var(--warn);
+    border-radius:12px;padding:8px 12px;margin-bottom:12px;display:flex;flex-wrap:wrap;gap:6px;align-items:center;
+    box-shadow:0 2px 8px rgba(0,0,0,.06)}
+  #stageTray.armed{background:#fff4e0;border-color:#c47b00;cursor:copy}
+  .stage-chip{cursor:grab;border-radius:6px;padding:3px 9px;font-size:12px;font-weight:600;border:1px solid var(--line);background:#fff;user-select:none}
+  .stage-chip.sel{box-shadow:0 0 0 2px var(--accent)}
+  .stage-chip .cnt{opacity:.7;font-weight:400}
+  [data-sess]{cursor:grab}
+  [data-sess].dragging{opacity:.45}
+  [data-sess].hl-unit{box-shadow:0 0 0 2px var(--accent);border-radius:6px}
+  [data-sess].hl-member{box-shadow:0 0 0 2px var(--warn);border-radius:6px}
+  td.drop-ok{outline:2px dashed var(--accent);outline-offset:-3px;background:#f4f8ff}
+  td.drop-na{background:repeating-linear-gradient(45deg,#eef0f3,#eef0f3 6px,#e4e7ec 6px,#e4e7ec 12px)}
+  td.drop-na [data-sess]{opacity:.4}
+  .avail-grid th.dow{cursor:pointer}
+  .muted{color:var(--muted)}
+  .pill{font-size:11px;padding:1px 7px;border-radius:20px;background:var(--chip)}
+  .checks label{display:inline-flex;align-items:center;gap:4px;margin-right:12px;font-size:13px}
+  .empty{color:var(--muted);font-style:italic}
+  footer{margin:0 auto;padding:8px 18px 40px;color:var(--muted);font-size:12px}
+</style>
+
+<header>
+  <h1>root 時間割スケジューラ</h1>
+  <div class="sub">ユニット（メンバー固定）を各コマに自動配置 ・ 制約チェック付き ・ データはこのPC内のみに保存されます</div>
+  <div class="season-bar">
+    <span class="muted">シーズン：</span>
+    <select id="seasonSelect"></select>
+    <input type="text" id="seasonName" placeholder="シーズン名" style="width:170px" title="このシーズンの名前（例：2026 夏期講習）">
+    <button class="btn small" onclick="newSeason()">＋ 新規</button>
+    <button class="btn small" onclick="duplicateSeason()">複製</button>
+    <button class="btn small danger" onclick="deleteSeason()">削除</button>
+    <span class="muted" style="font-size:12px">講師・生徒・ユニットの名簿は全シーズン共有／時間割・登校可能・コマ設定はシーズン別</span>
+  </div>
+</header>
+
+<nav id="nav"></nav>
+
+<main>
+  <!-- 設定 -->
+  <section class="panel" data-panel="config">
+    <div class="card">
+      <h2>期間・開校日</h2>
+      <div class="toolbar">
+        <label>時間割のタイプ
+          <select id="cfgMode" style="width:auto">
+            <option value="seasonal">講習（日付あり・複数週）</option>
+            <option value="weekly">通常授業（毎週同じ時間割）</option>
+          </select>
+        </label>
+        <span id="cfgSeasonalOnly">
+          <label>第1週の開始日（日曜） <input type="date" id="cfgStart" style="width:150px"></label>
+          <label>週数 <input type="number" id="cfgWeeks" min="1" max="12" style="width:64px"></label>
+        </span>
+      </div>
+      <div class="toolbar"><span class="muted">開校曜日：</span><span class="checks" id="cfgDays"></span></div>
+      <div class="toolbar">
+        <label>最大同時授業数（教室数） <input type="number" id="cfgMaxConc" min="1" max="20" style="width:64px"></label>
+        <span class="muted" id="cfgMaxConcHint" style="font-size:12px"></span>
+      </div>
+      <p class="hint" id="cfgModeHint"></p>
+    </div>
+    <div class="card">
+      <h2>コマ（時間帯）</h2>
+      <p class="hint">「遅い時間」とみなすコマを指定します（例：入れない＝21:10-22:10／なるべく避ける＝20:00-21:00）。実際に避ける対象かどうかは生徒ごとの「遅い時間NG」属性で決まります。通常授業など1日のコマ数が違う場合は追加・削除で調整してください。</p>
+      <table id="komaTable"></table>
+      <div class="toolbar" style="margin-top:10px"><button class="btn small" onclick="addKoma()">＋ コマを追加</button></div>
+    </div>
+    <div class="card">
+      <h2>新規登録の既定値</h2>
+      <p class="hint">「＋追加」で生徒・講師・ユニット・かけもちを新規作成したときの初期値をまとめて決めます。もちろん作成後に個別変更できます。</p>
+      <table id="defaultsTable" style="max-width:720px"></table>
+    </div>
+  </section>
+
+  <!-- 講師 -->
+  <section class="panel" data-panel="teachers">
+    <div class="card">
+      <h2>講師</h2>
+      <p class="hint">バイト講師は「空きコマ（時給の無駄）をなるべく作らない」対象になります。正規講師は対象外です。「出勤可能」で各講師の勤務できる時間を週ごとに設定でき、その時間内にしか授業は入りません（初期値は全開校コマ＝勤務可。休みを外していく運用）。</p>
+      <table id="teacherTable"></table>
+      <div class="toolbar" style="margin-top:10px">
+        <button class="btn small" onclick="addTeacher()">＋ 講師を追加</button>
+        <span class="muted" style="margin-left:8px">並び替え：</span>
+        <button class="btn small" onclick="sortTeachers('name')">名前順</button>
+        <button class="btn small" onclick="sortTeachers('employment')">雇用順（正規→バイト）</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- 生徒 -->
+  <section class="panel" data-panel="students">
+    <div class="card">
+      <h2>生徒</h2>
+      <p class="hint">「時間割提出」＝希望時間割を提出済みかどうかの管理用チェック（未提出の生徒は行が薄い黄色になります）。「遅い時間NG」「空き可(自習)」は生徒ごとに設定できます。「登校可能」ボタンで曜日×コマの希望を週ごとに入力します（新規生徒の初期値は設定タブで変更可）。枠数は全週の合計です。</p>
+      <div id="submitSummary" style="margin-bottom:10px"></div>
+      <table id="studentTable"></table>
+      <div class="toolbar" style="margin-top:10px">
+        <button class="btn small" onclick="addStudent()">＋ 生徒を追加</button>
+        <span class="muted" style="margin-left:8px">並び替え：</span>
+        <button class="btn small" onclick="sortStudents('grade')">学年順</button>
+        <button class="btn small" onclick="sortStudents('name')">名前順</button>
+        <button class="btn small" onclick="sortStudents('submitted')">未提出を上に</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ユニット -->
+  <section class="panel" data-panel="units">
+    <div class="card">
+      <h2>ユニット（授業）</h2>
+      <p class="hint">1ユニット＝担当講師・科目・メンバー（最大4人）・期間中の総コマ数。メンバーは全員が来られる時間にしか配置されません。「📌 コマ固定」で一部のコマを特定の日・時限に固定でき、残りは自動配置されます。</p>
+      <div class="toolbar" style="margin-bottom:8px;background:#fafbfc;border:1px solid var(--line);border-radius:8px;padding:8px 10px">
+        <b style="font-size:12px">回数を一括変更：</b>
+        <span>全ユニットを回数 <input type="number" id="bulkKoma" min="1" value="10" style="width:56px"> 回（固定）に</span>
+        <button class="btn small primary" onclick="bulkSetKoma()">適用</button>
+        <span class="muted" style="font-size:11px">※各行の「固定／幅」で個別に幅（最低〜最大）へ切替できます</span>
+      </div>
+      <table id="unitTable"></table>
+      <div class="toolbar" style="margin-top:10px">
+        <button class="btn small" onclick="addUnit()">＋ ユニットを追加</button>
+        <span class="muted" style="margin-left:8px">並び替え：</span>
+        <button class="btn small" onclick="sortUnits('teacher')">講師順</button>
+        <button class="btn small" onclick="sortUnits('subject')">科目順</button>
+        <button class="btn small" onclick="sortUnits('grade')">学年順</button>
+        <span style="margin-left:16px">
+          <button class="btn small primary" onclick="autoPlaceSelected()">⚡ 選択したユニットだけ自動配置</button>
+          <button class="btn small" onclick="clearSelectedPlacement()">選択の配置を解除</button>
+          <span class="muted" id="unitSelCount" style="font-size:12px"></span>
+        </span>
+      </div>
+    </div>
+    <div class="card">
+      <h2>かけもち受講（合計回数だけ指定）</h2>
+      <p class="hint">「この生徒は、指定した複数ユニットのどこに入ってもよく、合計◯回受ければOK」という場合に使います。生成時に、登校可能・重複なし・空きコマが増えにくい位置へ自動で振り分けます（同じ日に2回は入れません）。ユニットの固定メンバーとは別枠なので、対象ユニットの固定メンバーにこの生徒を入れる必要はありません。</p>
+      <table id="flexTable"></table>
+      <div class="toolbar" style="margin-top:10px"><button class="btn small" onclick="addFlex()">＋ かけもち受講を追加</button></div>
+    </div>
+  </section>
+
+  <!-- ダッシュボード -->
+  <section class="panel" data-panel="stats">
+    <div class="card">
+      <h2>生徒ダッシュボード</h2>
+      <p class="hint">列見出しをクリックで並び替え（もう一度で逆順）。「割当」列は直近に生成した時間割の数字です（生成前は「—」）。<b>登校可能・余裕は開校日の枠のみで集計</b>しており、常に「登校可能＝余裕＋予定コマ数」が成り立ちます（休校日に付けた○△は数えません）。重みは 余裕÷登校可能 の連続値で、違反スコア計算に使われます（0.7未満のみバッジ表示）。</p>
+      <div class="grid-scroll" id="stuDash"></div>
+    </div>
+    <div class="card">
+      <h2>ユニット統計</h2>
+      <div class="grid-scroll" id="unitDash"></div>
+    </div>
+    <div class="card">
+      <h2>講師統計</h2>
+      <p class="hint">「空きコマ」＝出勤日の最初の授業から最後の授業までの間の空き（バイト講師で特に重要）。</p>
+      <div class="grid-scroll" id="teaDash"></div>
+    </div>
+  </section>
+
+  <!-- 生成 -->
+  <section class="panel" data-panel="result">
+    <div class="card">
+      <div class="toolbar">
+        <button class="btn primary" onclick="run()">▶ 全部おまかせ生成</button>
+        <button class="btn" onclick="startManual()">✋ 手動配置を始める（空から）</button>
+        <button class="btn primary" id="fillRestBtn" style="display:none" onclick="fillRest()">▶ 残りを自動配置</button>
+        <button class="btn" onclick="saveHistory()">★ この結果を履歴に保存</button>
+        <button class="btn" onclick="exportCsv()">CSVで書き出し（Excelで開けます）</button>
+        <span class="muted" id="runNote"></span>
+      </div>
+      <div id="stats"></div>
+    </div>
+    <div class="card" id="historyCard" style="display:none">
+      <h2>保存した候補（履歴）</h2>
+      <p class="hint">気に入った結果を保存して見比べられます。「表示」で下の時間割に呼び出します。名前は書き換え可。</p>
+      <div id="historyList"></div>
+    </div>
+    <div class="card" id="violCard" style="display:none">
+      <h2>チェック結果（手直しの目安）</h2>
+      <p class="hint">「未配置」があれば最優先。ソフト違反は数個なら許容範囲です。</p>
+      <div id="violList"></div>
+    </div>
+    <div class="card" id="viewBar" style="display:none">
+      <div class="toolbar">
+        <span class="muted">表示形式：</span>
+        <button class="btn small" id="vw-units" onclick="setResultView('units')">ユニット別（週）</button>
+        <button class="btn small" id="vw-desk" onclick="setResultView('desk')">全体時間割（1週間一望・編集可）</button>
+        <button class="btn small" id="vw-person" onclick="setResultView('person')">個人時間割</button>
+        <select id="personSel" style="width:auto;display:none" onchange="renderResultOutput()"></select>
+      </div>
+      <p class="hint" style="margin:8px 0 0">コマを<b>クリック</b>＝同じユニット（青枠）・メンバーが重なるコマ（オレンジ枠）をハイライト／コマを<b>ドラッグ</b>＝移動。置けないマスはグレーになります（ユニット別・全体時間割ビューで有効）。</p>
+    </div>
+    <div id="stageTray" style="display:none"></div>
+    <div id="weeksOut"></div>
+  </section>
+</main>
+
+<footer>
+  <div style="margin-bottom:8px">変更は自動でこのPC（ブラウザ）に保存されます。シーズンごとにデータは独立しています。</div>
+  <div id="bkBar" class="toolbar" style="margin-bottom:8px"></div>
+  <input type="file" id="importFile" accept=".json" style="display:none">
+  <button class="btn small" onclick="resetSample()">このシーズンをサンプルに戻す</button>
+  <button class="btn small danger" onclick="clearAll()">このシーズンを空にする</button>
+</footer>
+
+<!-- 復元一覧モーダル -->
+<div class="modal-bg" id="restoreModal">
+  <div class="modal" style="max-width:560px">
+    <h3>バックアップから復元</h3>
+    <p class="hint">バックアップフォルダ内のファイル一覧（新しい順）。「復元」をクリックすると読み込みます。</p>
+    <div id="restoreList" style="max-height:50vh;overflow:auto"></div>
+    <div class="toolbar" style="justify-content:flex-end;margin-top:12px">
+      <button class="btn small" onclick="closeRestore();document.getElementById('importFile').click()">別のファイルを選ぶ…</button>
+      <button class="btn primary" onclick="closeRestore()">閉じる</button>
+    </div>
+  </div>
+</div>
+
+<!-- メンバー選択モーダル -->
+<div class="modal-bg" id="memberModal">
+  <div class="modal">
+    <h3 id="memberTitle">メンバーを選択</h3>
+    <p class="hint">チェックを入れてください（通常4人）。<span id="memberCount" class="pill"></span></p>
+    <div id="memberSortBar" class="toolbar" style="margin-bottom:6px"></div>
+    <div id="memberList" style="max-height:52vh;overflow:auto"></div>
+    <div class="toolbar" style="margin-top:12px;justify-content:flex-end">
+      <button class="btn primary" onclick="closeMembers()">決定</button>
+    </div>
+  </div>
+</div>
+
+<!-- かけもち対象ユニット選択モーダル -->
+<div class="modal-bg" id="flexModal">
+  <div class="modal">
+    <h3 id="flexTitle">対象ユニットを選択</h3>
+    <p class="hint">この生徒が入ってよいユニットにチェックを入れてください。<span id="flexCount" class="pill"></span></p>
+    <div id="flexSortBar" class="toolbar" style="margin-bottom:6px"></div>
+    <div id="flexUnitList" style="max-height:52vh;overflow:auto"></div>
+    <div class="toolbar" style="margin-top:12px;justify-content:flex-end">
+      <button class="btn primary" onclick="closeFlexUnits()">決定</button>
+    </div>
+  </div>
+</div>
+
+<!-- 確認モーダル -->
+<div class="modal-bg" id="confirmModal">
+  <div class="modal" style="max-width:420px">
+    <h3 id="confirmTitle">確認</h3>
+    <p id="confirmMsg" style="margin:8px 0 16px"></p>
+    <div class="toolbar" style="justify-content:flex-end">
+      <button class="btn" onclick="closeConfirm(false)">キャンセル</button>
+      <button class="btn primary" id="confirmOk" onclick="closeConfirm(true)">OK</button>
+    </div>
+  </div>
+</div>
+
+<!-- トースト -->
+<div id="toast" style="position:fixed;left:50%;bottom:28px;transform:translateX(-50%);background:#1f2733;color:#fff;padding:10px 18px;border-radius:22px;font-size:13px;box-shadow:0 6px 20px rgba(0,0,0,.2);opacity:0;transition:opacity .2s;pointer-events:none;z-index:60"></div>
+
+<!-- 登校可能 編集モーダル -->
+<div class="modal-bg" id="availModal">
+  <div class="modal">
+    <h3 id="availTitle">登校可能時間</h3>
+    <p class="hint" id="availHint">週タブで各週を切替。クリックまたは<b>ドラッグでなぞる</b>とまとめて切替、曜日名クリックでその曜日を一括切替。青＝来られる。</p>
+    <div id="availTabs" style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:10px"></div>
+    <div class="grid-scroll"><table class="avail-grid" id="availGrid"></table></div>
+    <div class="toolbar" style="margin-top:12px;justify-content:space-between">
+      <div>
+        <button class="btn small" id="undoBtn" onclick="undoAvail()">↩ 一つ戻す</button>
+        <button class="btn small" id="copyWeekBtn" onclick="copyWeekToAll()">この週を全週にコピー</button>
+      </div>
+      <div>
+        <button class="btn small" id="allOnBtn" onclick="availAll(true)">この週 全ON</button>
+        <button class="btn small" id="allOffBtn" onclick="availAll(false)">この週 全OFF</button>
+        <button class="btn primary" onclick="closeAvail()">閉じる</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const DOW = ["日","月","火","水","木","金","土"]; // 0..6
+const GRADES = ["中1","中2","中3","高1","高2","高3","その他"];
+const LS_KEY = "juku_scheduler_v4"; // v4: シーズン（複数プロジェクト）対応
+let app = null;    // { currentId, seasons:[{id,name,ts,data}] }
+let state = null;  // 現在のシーズンのデータ（各描画関数が参照）
+let editingAvailKind = "student";
+let editingAvailId = null;
+
+/* ---------- サンプルデータ ---------- */
+function sampleState(){
+  const komas = [
+    {id:1,label:"1限",time:"13:00-14:00",avoidMS:false,forbidMS:false},
+    {id:2,label:"2限",time:"14:10-15:10",avoidMS:false,forbidMS:false},
+    {id:3,label:"3限",time:"15:20-16:20",avoidMS:false,forbidMS:false},
+    {id:4,label:"4限",time:"16:30-17:30",avoidMS:false,forbidMS:false},
+    {id:5,label:"5限",time:"17:40-18:40",avoidMS:false,forbidMS:false},
+    {id:6,label:"6限",time:"18:50-19:50",avoidMS:false,forbidMS:false},
+    {id:7,label:"7限",time:"20:00-21:00",avoidMS:true, forbidMS:false},
+    {id:8,label:"8限",time:"21:10-22:10",avoidMS:false,forbidMS:true },
+  ];
+  const teachers = [
+    {id:"t1",name:"佐藤先生",part:false},
+    {id:"t2",name:"鈴木先生",part:false},
+    {id:"t3",name:"高橋先生",part:true},
+    {id:"t4",name:"田中先生",part:true},
+  ];
+  const grades = ["中1","中2","中3","高1","高2","高3"];
+  const students = [];
+  const availability = {};
+  const WEEKS=5;
+  for(let i=0;i<16;i++){
+    const id="s"+(i+1);
+    const g=grades[i%6];
+    students.push({id,name:"生徒"+String(i+1).padStart(2,"0"),grade:g,lateNG:isMS12(g),flexGap:isExam(g),submitted:i<14}); // デモ用に2人だけ未提出
+    // サンプル: 学年で来られる時間帯を変える（週ごとに少しずつ変化）
+    const av={};
+    const openDows=[1,2,3,4,5,6];
+    for(let w=0;w<WEEKS;w++){
+      for(const d of openDows){
+        for(const k of komas){
+          let ok;
+          if(g==="中1"||g==="中2") ok = k.id<=6 && (d%2===(i%2)? true : k.id<=5);
+          else if(g==="中3") ok = k.id>=3;              // 夕方以降中心
+          else if(g==="高3") ok = true;                  // フル
+          else ok = k.id>=2 && k.id<=7;
+          // 週・生徒でばらつき
+          if((i+d+k.id+w)%7===0) ok=!ok;
+          if(ok) av[w+"_"+d+"_"+k.id]=true;
+        }
+      }
+    }
+    availability[id]=av;
+  }
+  // ユニット: 科目・講師・メンバー・総コマ数（5週間分）
+  const S=(...n)=>n.map(x=>"s"+x);
+  const units = [
+    {id:"u1",subject:"数学",teacherId:"t1",members:S(1,7,13),  komaMin:10,komaMax:10},
+    {id:"u2",subject:"数学",teacherId:"t1",members:S(3,9,15),  komaMin:10,komaMax:10},
+    {id:"u3",subject:"英語",teacherId:"t2",members:S(1,4,10,16),komaMin:10,komaMax:10},
+    {id:"u4",subject:"英語",teacherId:"t2",members:S(6,12),    komaMin:6, komaMax:8},
+    {id:"u5",subject:"国語",teacherId:"t3",members:S(2,8,14),  komaMin:6, komaMax:6},
+    {id:"u6",subject:"理科",teacherId:"t3",members:S(5,11),    komaMin:6, komaMax:6},
+    {id:"u7",subject:"社会",teacherId:"t4",members:S(3,9,15),  komaMin:6, komaMax:6},
+    {id:"u8",subject:"英語",teacherId:"t2",members:S(2,5,8,11),komaMin:8, komaMax:8},
+    {id:"u9",subject:"数学",teacherId:"t1",members:S(4,10,16), komaMin:8, komaMax:8},
+    {id:"u10",subject:"理科",teacherId:"t4",members:S(6,12,13),komaMin:6, komaMax:8},
+  ];
+  // 講師の出勤可能は初期値「全開校コマ勤務可」で作成（そこから休みを外す運用）
+  const teacherAvailability={};
+  teachers.forEach(t=>{ const av={}; for(let w=0;w<WEEKS;w++) [1,2,3,4,5,6].forEach(d=> komas.forEach(k=> av[w+"_"+d+"_"+k.id]=true)); teacherAvailability[t.id]=av; });
+  return {
+    weeks:5,
+    startDate:"2026-07-26", // 第1週の日曜
+    openDows:[1,2,3,4,5,6], // 月〜土
+    komas, teachers, students, availability, units, teacherAvailability,
+    history:[], flex:[], defaults:{studentGrade:"中1",studentAvailFull:true,studentLateNG:"auto",studentFlexGap:"auto",teacherPart:true,unitKomaMin:8,unitKomaMax:8,flexCount:8}
+  };
+}
+// 指定講師の出勤可能を「全開校コマ勤務可」で埋める
+function fillTeacherFull(id){ const av={}; for(let w=0;w<state.weeks;w++) state.openDows.forEach(d=> state.komas.forEach(k=> av[w+"_"+d+"_"+k.id]=true)); state.teacherAvailability[id]=av; }
+// 生徒の登校可能を「全開校コマ可」で埋める（新規登録の既定値用）
+function fillStudentFull(id){ const av={}; for(let w=0;w<state.weeks;w++) state.openDows.forEach(d=> state.komas.forEach(k=> av[w+"_"+d+"_"+k.id]=true)); state.availability[id]=av; }
+
+// 空のシーズン（設定・コマは既定、生徒/講師/ユニットは空）
+function blankState(){ return {weeks:5,startDate:"2026-07-26",openDows:[1,2,3,4,5,6],komas:sampleState().komas,teachers:[],students:[],availability:{},units:[],teacherAvailability:{},history:[],flex:[],defaults:{studentGrade:"中1",studentAvailFull:true,studentLateNG:"auto",studentFlexGap:"auto",teacherPart:true,unitKomaMin:8,unitKomaMax:8,flexCount:8}}; }
+function migrateData(d){ if(!d.startDate)d.startDate="2026-07-26"; if(!d.teacherAvailability)d.teacherAvailability={}; if(!d.history)d.history=[];
+  (d.students||[]).forEach(s=>{ if(s.lateNG===undefined)s.lateNG=isMS12(s.grade); if(s.flexGap===undefined)s.flexGap=isExam(s.grade); if(s.submitted===undefined)s.submitted=false; });
+  (d.units||[]).forEach(u=>{ if(!u.pins)u.pins={};
+    if(u.komaMin===undefined) u.komaMin=u.komaCount!==undefined?u.komaCount:8;
+    if(u.komaMax===undefined) u.komaMax=Math.max(u.komaMin, u.komaCount!==undefined?u.komaCount:8);
+    delete u.komaCount; });
+  if(!d.flex)d.flex=[];
+  if(!d.mode)d.mode="seasonal"; // seasonal=講習（日付あり）/ weekly=通常授業（毎週同じ）
+  d.defaults=Object.assign({studentGrade:"中1",studentAvailFull:true,studentLateNG:"auto",studentFlexGap:"auto",
+    teacherPart:true,unitKomaMin:8,unitKomaMax:8,flexCount:8}, d.defaults||{}); return d; }
+function DEF(){ return state.defaults||{}; }
+
+/* ---------- 永続化（シーズン単位） ---------- */
+function currentSeason(){ return app.seasons.find(s=>s.id===app.currentId)||app.seasons[0]; }
+function bindState(){ state=currentSeason().data; }
+/* 講師・生徒・ユニットは全シーズン共有（app.shared が唯一の名簿。各シーズンのdataは同じ配列を参照）。
+   登校/出勤可能・提出・かけもち・固定・コマ・履歴・既定値はシーズン別。
+   保存JSONには各シーズンにも複製が書き出されるが、読み込み時にensureShared()で参照を張り直す。 */
+// 全シーズンの かけもち設定 から、存在しないユニット/生徒への参照を掃除（ユニットは共有なので削除は全シーズンに波及）
+function cleanFlexRefs(){
+  const uids=new Set((app.shared?app.shared.units:[]).map(u=>u.id));
+  const sids=new Set((app.shared?app.shared.students:[]).map(s=>s.id));
+  app.seasons.forEach(se=>{ const f=se.data.flex; if(!f) return;
+    se.data.flex=f.filter(x=>sids.has(x.studentId));
+    se.data.flex.forEach(x=>x.unitIds=x.unitIds.filter(id=>uids.has(id)));
+  });
+}
+function ensureShared(){
+  if(!app.shared){
+    const cur=(app.seasons.find(s=>s.id===app.currentId)||app.seasons[0]).data;
+    app.shared={teachers:cur.teachers||[], students:cur.students||[], units:cur.units||[]};
+  }
+  app.seasons.forEach(se=>{ se.data.teachers=app.shared.teachers; se.data.students=app.shared.students; se.data.units=app.shared.units; });
+}
+function save(){ SW=null; localStorage.setItem(LS_KEY, JSON.stringify(app));
+  if(typeof backupDir!=="undefined" && backupDir){ clearTimeout(_bkTimer); _bkTimer=setTimeout(autoBackup, 2500); } }
+function loadApp(){
+  try{ const s=localStorage.getItem(LS_KEY); if(s) app=JSON.parse(s); }catch(e){}
+  if(!app||!app.seasons||!app.seasons.length){
+    app={currentId:"se1", seasons:[{id:"se1",name:"2026 夏期講習",ts:Date.now(),data:sampleState()}]};
+  }
+  if(!app.seasons.some(s=>s.id===app.currentId)) app.currentId=app.seasons[0].id;
+  app.seasons.forEach(se=>migrateData(se.data));
+  ensureShared();
+  cleanFlexRefs();
+  bindState();
+}
+function renderSeasonBar(){
+  const sel=document.getElementById("seasonSelect");
+  sel.innerHTML=app.seasons.map(s=>`<option value="${s.id}" ${s.id===app.currentId?"selected":""}>${s.name}</option>`).join("");
+  sel.onchange=e=>switchSeason(e.target.value);
+  document.getElementById("seasonName").value=currentSeason().name;
+  document.getElementById("seasonName").onchange=e=>renameSeason(e.target.value);
+}
+function switchSeason(id){ app.currentId=id; bindState(); save(); renderSeasonBar(); renderAll(); showPanel("config"); }
+function renameSeason(name){ currentSeason().name=name||"（無名）"; save(); renderSeasonBar(); }
+function newSeason(){ const id=uid("se"); app.seasons.push({id,name:"新しいシーズン",ts:Date.now(),data:blankState()}); app.currentId=id; ensureShared(); bindState(); save(); renderSeasonBar(); renderAll(); showPanel("config"); toast("新しいシーズンを作成しました（講師・生徒・ユニットは共有名簿を使います）"); }
+function duplicateSeason(){ const cur=currentSeason(); const id=uid("se"); app.seasons.push({id,name:cur.name+" のコピー",ts:Date.now(),data:JSON.parse(JSON.stringify(cur.data))}); app.currentId=id; ensureShared(); bindState(); save(); renderSeasonBar(); renderAll(); toast("複製しました"); }
+function deleteSeason(){ if(app.seasons.length<=1){ toast("最後のシーズンは削除できません"); return; }
+  askConfirm(`シーズン「${currentSeason().name}」を削除しますか？（元に戻せません）`,()=>{ app.seasons=app.seasons.filter(s=>s.id!==app.currentId); app.currentId=app.seasons[0].id; bindState(); save(); renderSeasonBar(); renderAll(); toast("削除しました"); }); }
+
+/* ---------- バックアップ（フォルダ自動保存＋ファイル書き出し・読み込み） ---------- */
+const FS_OK = "showDirectoryPicker" in window;
+let backupDir=null, _bkTimer=null;
+// フォルダの記憶（IndexedDB）
+function idbOpen(){ return new Promise((res,rej)=>{ const r=indexedDB.open("juku_fs",1);
+  r.onupgradeneeded=()=>r.result.createObjectStore("kv"); r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error); }); }
+async function idbSet(k,v){ const db=await idbOpen(); return new Promise((res,rej)=>{ const tx=db.transaction("kv","readwrite"); tx.objectStore("kv").put(v,k); tx.oncomplete=res; tx.onerror=()=>rej(tx.error); }); }
+async function idbGet(k){ const db=await idbOpen(); return new Promise((res,rej)=>{ const tx=db.transaction("kv","readonly"); const rq=tx.objectStore("kv").get(k); rq.onsuccess=()=>res(rq.result); rq.onerror=()=>rej(rq.error); }); }
+async function initBackupDir(){ if(!FS_OK){ updateBackupUI(); return; } try{ backupDir=await idbGet("backupDir")||null; }catch(e){ backupDir=null; } updateBackupUI(); }
+async function chooseBackupDir(){
+  try{ const h=await showDirectoryPicker({mode:"readwrite"}); backupDir=h; await idbSet("backupDir",h);
+    updateBackupUI(); toast(`バックアップ先を「${h.name}」にしました`); autoBackup(); }
+  catch(e){ /* キャンセル */ }
+}
+async function ensurePerm(){
+  if(!backupDir) return false;
+  try{ let p=await backupDir.queryPermission({mode:"readwrite"}); if(p==="granted") return true;
+    p=await backupDir.requestPermission({mode:"readwrite"}); return p==="granted"; }catch(e){ return false; }
+}
+function backupJson(){ return JSON.stringify({format:"juku_scheduler_backup", version:4, exportedAt:new Date().toISOString(), app},null,1); }
+async function writeToFolder(name){
+  const fh=await backupDir.getFileHandle(name,{create:true});
+  const w=await fh.createWritable(); await w.write(backupJson()); await w.close();
+}
+function bkStamp(){ const dt=new Date(); const p=n=>String(n).padStart(2,"0");
+  return `${dt.getFullYear()}-${p(dt.getMonth()+1)}-${p(dt.getDate())}_${p(dt.getHours())}${p(dt.getMinutes())}`; }
+function setBkStatus(msg){ const el=document.getElementById("bkStatus"); if(el) el.textContent=msg; }
+async function autoBackup(){
+  if(!FS_OK||!backupDir) return;
+  try{ if(!(await ensurePerm())) return;
+    await writeToFolder("時間割データ_自動バックアップ.json");
+    const dt=new Date(); setBkStatus(`自動保存 ✓ ${String(dt.getHours()).padStart(2,"0")}:${String(dt.getMinutes()).padStart(2,"0")}`);
+  }catch(e){ /* 静かに失敗（次の手動操作で許可を促す） */ }
+}
+function downloadBackup(){
+  const blob=new Blob([backupJson()],{type:"application/json"});
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(blob); a.download=`時間割データ_バックアップ_${bkStamp()}.json`; a.click();
+  URL.revokeObjectURL(a.href);
+  toast("バックアップファイルをダウンロードしました");
+}
+async function exportBackup(){
+  if(FS_OK&&backupDir){
+    try{ if(await ensurePerm()){ await writeToFolder(`時間割データ_${bkStamp()}.json`);
+      toast(`フォルダ「${backupDir.name}」に保存しました`); autoBackup(); return; } }catch(e){}
+    toast("フォルダに書き込めなかったためダウンロードします");
+  }
+  downloadBackup();
+}
+async function openRestore(){
+  if(!(FS_OK&&backupDir)){ document.getElementById("importFile").click(); return; }
+  if(!(await ensurePerm())){ toast("フォルダへのアクセスが許可されませんでした"); return; }
+  const items=[];
+  try{ for await(const [name,h] of backupDir.entries()){
+    if(h.kind==="file"&&/\.json$/i.test(name)){ const f=await h.getFile(); items.push({name,mtime:f.lastModified}); } }
+  }catch(e){ toast("フォルダを読み取れませんでした"); return; }
+  items.sort((a,b)=>b.mtime-a.mtime);
+  const list=document.getElementById("restoreList");
+  if(!items.length){ list.innerHTML='<div class="empty" style="padding:12px">このフォルダにバックアップファイルがありません</div>'; }
+  else list.innerHTML=items.map(it=>{ const d=new Date(it.mtime); const p=n=>String(n).padStart(2,"0");
+    const t=`${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()} ${p(d.getHours())}:${p(d.getMinutes())}`;
+    return `<div style="display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--line);padding:7px 4px">
+      <span style="flex:1;word-break:break-all">${it.name}</span><span class="muted" style="font-size:12px;white-space:nowrap">${t}</span>
+      <button class="btn small primary" onclick="restoreFromFolder('${it.name.replace(/'/g,"\\'")}')">復元</button></div>`; }).join("");
+  document.getElementById("restoreModal").classList.add("open");
+}
+async function restoreFromFolder(name){
+  try{ const fh=await backupDir.getFileHandle(name); const f=await fh.getFile(); closeRestore(); importBackup(f); }
+  catch(e){ toast("ファイルを読み込めませんでした"); }
+}
+function closeRestore(){ document.getElementById("restoreModal").classList.remove("open"); }
+function updateBackupUI(){
+  const bar=document.getElementById("bkBar"); if(!bar) return;
+  if(FS_OK&&backupDir){
+    bar.innerHTML=`<span>📁 バックアップ先：<b>${backupDir.name}</b></span>
+      <span class="muted" id="bkStatus" style="font-size:12px"></span>
+      <button class="btn small" onclick="exportBackup()">💾 今すぐ保存</button>
+      <button class="btn small" onclick="openRestore()">📂 復元…</button>
+      <button class="btn small" onclick="chooseBackupDir()">保存先を変更</button>`;
+  }else if(FS_OK){
+    bar.innerHTML=`<button class="btn small primary" onclick="chooseBackupDir()">📁 バックアップフォルダを設定（以降は自動保存）</button>
+      <button class="btn small" onclick="downloadBackup()">💾 ダウンロードで保存</button>
+      <button class="btn small" onclick="document.getElementById('importFile').click()">📂 ファイルから復元</button>`;
+  }else{
+    bar.innerHTML=`<button class="btn small" onclick="downloadBackup()">💾 ファイルに保存（バックアップ）</button>
+      <button class="btn small" onclick="document.getElementById('importFile').click()">📂 ファイルから読み込み（復元）</button>`;
+  }
+}
+function importBackup(file){
+  const reader=new FileReader();
+  reader.onload=()=>{
+    let payload;
+    try{ payload=JSON.parse(reader.result); }catch(e){ toast("読み込めませんでした（JSONファイルではありません）"); return; }
+    const incoming = payload && payload.format==="juku_scheduler_backup" ? payload.app : payload;
+    if(!incoming || !Array.isArray(incoming.seasons) || !incoming.seasons.length){ toast("このファイルは時間割データのバックアップではないようです"); return; }
+    askConfirm(`バックアップ（シーズン${incoming.seasons.length}件：${incoming.seasons.map(s=>s.name).join("・")}）を読み込みます。現在のデータはすべて置き換えられます。よろしいですか？`,()=>{
+      app=incoming;
+      if(!app.seasons.some(s=>s.id===app.currentId)) app.currentId=app.seasons[0].id;
+      app.seasons.forEach(se=>migrateData(se.data));
+      ensureShared();
+      bindState(); save(); renderSeasonBar(); renderAll(); showPanel("config");
+      toast("バックアップを復元しました");
+    });
+  };
+  reader.readAsText(file);
+}
+
+function resetSample(){ askConfirm("このシーズンをサンプルデータに戻します（共有名簿＝講師・生徒・ユニットもサンプルに置き換わるため全シーズンに影響します）。よろしいですか？",()=>{
+  const smp=sampleState();
+  app.shared.teachers.splice(0,app.shared.teachers.length,...smp.teachers);
+  app.shared.students.splice(0,app.shared.students.length,...smp.students);
+  app.shared.units.splice(0,app.shared.units.length,...smp.units);
+  currentSeason().data=smp; ensureShared(); bindState(); save(); renderAll(); toast("サンプルデータに戻しました"); }); }
+function clearAll(){ askConfirm("このシーズンの時間割・登校/出勤可能・かけもち・履歴を消去します（講師・生徒・ユニットの名簿は全シーズン共有のため残ります）。よろしいですか？",()=>{ currentSeason().data=blankState(); ensureShared(); bindState(); save(); renderAll(); toast("このシーズンを初期化しました（名簿は保持）"); }); }
+
+/* ---------- ユーティリティ ---------- */
+const uid = (p)=> p+Math.random().toString(36).slice(2,8);
+const teacherById=(id)=>state.teachers.find(t=>t.id===id);
+const studentById=(id)=>state.students.find(s=>s.id===id);
+function isExam(grade){ return grade==="中3"||grade==="高3"; } // 既定: 空きコマ気にしない
+function isMS12(grade){ return grade==="中1"||grade==="中2"; }  // 既定: 遅い時間NG
+function studentFlexGap(m){ const s=studentById(m); return !!(s&&s.flexGap); } // この生徒は空きコマOK
+
+/* ---------- 日付（第1週の日曜を起点に週×曜日→実日付） ---------- */
+function parseDate(str){ const p=(str||"2026-07-26").split("-").map(Number); return new Date(p[0],p[1]-1,p[2]); }
+function weekStartSunday(){ const b=parseDate(state.startDate); const s=new Date(b); s.setDate(b.getDate()-b.getDay()); return s; }
+function dateFor(w,dow){ const s=weekStartSunday(); const dt=new Date(s); dt.setDate(s.getDate()+w*7+dow); return dt; }
+function fmtMD(dt){ return (dt.getMonth()+1)+"/"+dt.getDate(); }
+/* ---------- 時間割タイプ: 講習（日付あり・複数週） / 通常授業（毎週同じ・日付なし） ---------- */
+function isWeekly(){ return state.mode==="weekly"; }
+function dateSub(w,d){ return isWeekly()? "" : fmtMD(dateFor(w,d)); }        // 曜日見出しの日付（通常は空）
+function weekRange(w,dows){ return isWeekly()? "" : `${fmtMD(dateFor(w,dows[0]))}〜${fmtMD(dateFor(w,dows[dows.length-1]))}`; }
+function weekTitle(w){ return isWeekly()? "毎週の時間割" : `第 ${w+1} 週`; }
+// 通常授業ではユニットの回数は週1回で固定（共有名簿のkomaMin/Maxは講習用の値のまま保持）
+function uMin(u){ return isWeekly()?1:u.komaMin; }
+function uMax(u){ return isWeekly()?1:u.komaMax; }
+// 通常授業の既定コマ: 13:00/14:50/16:30/18:10/19:50 開始の90分×5コマ
+function weeklyKomas(){ return [["1限","13:00-14:30",false],["2限","14:50-16:20",false],["3限","16:30-18:00",false],["4限","18:10-19:40",false],["5限","19:50-21:20",true]]
+  .map(([label,time,avoid],i)=>({id:i+1,label,time,avoidMS:avoid,forbidMS:false})); }
+function seasonalKomas(){ return sampleState().komas; }
+// コマ構成を入れ替え、消えたコマIDに紐づく登校/出勤/固定データを掃除
+function swapKomas(newKomas){
+  const ids=new Set(newKomas.map(k=>String(k.id)));
+  const purge=map=>{ if(!map) return; Object.keys(map).forEach(k=>{ const kid=k.split("_")[2]; if(!ids.has(kid)) delete map[k]; }); };
+  Object.values(state.availability).forEach(purge);
+  Object.values(state.teacherAvailability).forEach(purge);
+  state.units.forEach(u=>purge(u.pins));
+  state.komas=newKomas;
+}
+
+/* ---------- 通知・確認（サンドボックスでも動くよう自前実装） ---------- */
+// 予期しないエラーを画面に出す（「ボタンが反応しない」の原因究明用）
+window.addEventListener("error",e=>{ try{ toast("エラー: "+(e.message||e.error)); }catch(_){} });
+window.addEventListener("unhandledrejection",e=>{ try{ const m=e.reason&&e.reason.message||e.reason; if(m&&!String(m).includes("abort")) toast("エラー: "+m); }catch(_){} });
+let _toastTimer=null;
+function toast(msg){
+  const t=document.getElementById("toast"); t.textContent=msg; t.style.opacity="1";
+  clearTimeout(_toastTimer); _toastTimer=setTimeout(()=>t.style.opacity="0",2200);
+}
+let _confirmCb=null;
+function askConfirm(msg,onYes){
+  document.getElementById("confirmMsg").textContent=msg; _confirmCb=onYes;
+  document.getElementById("confirmModal").classList.add("open");
+}
+function closeConfirm(ok){
+  document.getElementById("confirmModal").classList.remove("open");
+  const cb=_confirmCb; _confirmCb=null; if(ok&&cb) cb();
+}
+
+/* ---------- ナビ ---------- */
+const PANELS=[["config","設定"],["teachers","講師"],["students","生徒"],["units","ユニット"],["stats","ダッシュボード"],["result","生成・結果"]];
+function buildNav(){
+  const nav=document.getElementById("nav"); nav.innerHTML="";
+  PANELS.forEach(([key,label],i)=>{
+    const b=document.createElement("button"); b.textContent=label;
+    b.onclick=()=>showPanel(key);
+    b.dataset.key=key; nav.appendChild(b);
+  });
+}
+function showPanel(key){
+  document.querySelectorAll(".panel").forEach(p=>p.classList.toggle("active",p.dataset.panel===key));
+  document.querySelectorAll("#nav button").forEach(b=>b.classList.toggle("active",b.dataset.key===key));
+}
+
+/* ---------- 新規登録の既定値 ---------- */
+function renderDefaults(){
+  const d=state.defaults; const t=document.getElementById("defaultsTable"); if(!t) return;
+  const grp=(label)=>`<tr><td colspan="2" style="background:#fafbfc;font-weight:600;color:var(--muted);font-size:12px">${label}</td></tr>`;
+  const row=(label,ctrl,hint)=>`<tr><td style="white-space:nowrap;width:1%;padding-right:16px">${label}</td><td>${ctrl}${hint?`<div class="hint" style="margin:2px 0 0">${hint}</div>`:""}</td></tr>`;
+  const sel=(id,opts,val)=>`<select id="${id}">${opts.map(([v,l])=>`<option value="${v}" ${v==val?"selected":""}>${l}</option>`).join("")}</select>`;
+  const modeOpts=[["auto","学年から自動判定"],["on","常にオン"],["off","常にオフ"]];
+  t.innerHTML=
+    grp("生徒")+
+    row("既定の学年", sel("dfGrade",GRADES.map(g=>[g,g]),d.studentGrade))+
+    row("遅い時間NG", sel("dfLate",modeOpts,d.studentLateNG), "自動＝中1・中2はオン")+
+    row("空き可(自習)", sel("dfFlex",modeOpts,d.studentFlexGap), "自動＝中3・高3はオン")+
+    row("登校可能の初期状態", sel("dfAvail",[["full","全日程 登校可能（来られない枠を消す運用）"],["empty","空（来られる枠を塗る運用）"]], d.studentAvailFull?"full":"empty"), "提出チェックは常に「未提出」で作成")+
+    grp("講師")+
+    row("雇用", sel("dfPart",[["part","バイト"],["reg","正規"]], d.teacherPart?"part":"reg"), "出勤可能は常に「全開校コマ可」で作成")+
+    grp("ユニット")+
+    row("回数（最低〜最大）", `<input type="number" id="dfMin" min="1" value="${d.unitKomaMin}" style="width:58px"> 〜 <input type="number" id="dfMax" min="1" value="${d.unitKomaMax}" style="width:58px">`)+
+    grp("かけもち受講")+
+    row("既定の回数", `<input type="number" id="dfFlexCount" min="1" value="${d.flexCount}" style="width:64px">`);
+  const on=(id,fn)=>{ const el=document.getElementById(id); if(el) el.onchange=e=>{ fn(e.target.value); save(); }; };
+  on("dfGrade",v=>d.studentGrade=v);
+  on("dfLate",v=>d.studentLateNG=v);
+  on("dfFlex",v=>d.studentFlexGap=v);
+  on("dfAvail",v=>d.studentAvailFull=(v==="full"));
+  on("dfPart",v=>d.teacherPart=(v==="part"));
+  on("dfMin",v=>{d.unitKomaMin=Math.max(1,+v||1); if(d.unitKomaMax<d.unitKomaMin){d.unitKomaMax=d.unitKomaMin; renderDefaults();}});
+  on("dfMax",v=>{d.unitKomaMax=Math.max(d.unitKomaMin,+v||d.unitKomaMin); renderDefaults();});
+  on("dfFlexCount",v=>d.flexCount=Math.max(1,+v||1));
+}
+
+/* ---------- 設定描画 ---------- */
+function renderConfig(){
+  document.getElementById("cfgWeeks").value=state.weeks;
+  const sd=document.getElementById("cfgStart"); sd.value=state.startDate||"2026-07-26";
+  sd.onchange=(e)=>{ state.startDate=e.target.value; save(); };
+  const mc=document.getElementById("cfgMaxConc"); mc.value=state.maxConcurrent||"";
+  mc.placeholder=state.teachers.length; mc.max=Math.max(20,state.teachers.length);
+  document.getElementById("cfgMaxConcHint").textContent=`空欄なら講師数（${state.teachers.length}）まで同時開講。教室が少ない場合は数を入れてください。`;
+  mc.onchange=(e)=>{ const v=+e.target.value||0; state.maxConcurrent=v>0?v:null; save(); };
+  renderDefaults();
+  const days=document.getElementById("cfgDays"); days.innerHTML="";
+  [0,1,2,3,4,5,6].forEach(d=>{ // 日曜始まり
+    const l=document.createElement("label");
+    const on=state.openDows.includes(d);
+    l.innerHTML=`<input type="checkbox" ${on?"checked":""}> ${DOW[d]}`;
+    l.querySelector("input").onchange=(e)=>{
+      if(e.target.checked){ if(!state.openDows.includes(d)) state.openDows.push(d); }
+      else state.openDows=state.openDows.filter(x=>x!==d);
+      state.openDows.sort((a,b)=>a-b); save(); // 日曜(0)始まり
+    };
+    days.appendChild(l);
+  });
+  document.getElementById("cfgWeeks").onchange=(e)=>{ state.weeks=Math.max(1,+e.target.value||1); save(); };
+
+  // 時間割タイプ（講習/通常授業）
+  const md=document.getElementById("cfgMode"); md.value=state.mode||"seasonal";
+  md.onchange=(e)=>{ state.mode=e.target.value;
+    if(isWeekly()) state.weeks=1;   // 通常授業は1週間の繰り返し
+    save(); renderConfig();
+    const wk=isWeekly();
+    askConfirm(`コマ構成を${wk?"通常授業の既定（90分×5コマ：13:00/14:50/16:30/18:10/19:50 開始）":"講習の既定（60分×8コマ：13:00〜22:10）"}に置き換えますか？（無くなるコマに付いていた ○△・固定は消えます）`,
+      ()=>{ swapKomas(wk?weeklyKomas():seasonalKomas()); save(); renderConfig(); toast("コマ構成を置き換えました"); });
+  };
+  document.getElementById("cfgSeasonalOnly").style.display=isWeekly()?"none":"";
+  document.getElementById("cfgModeHint").textContent=isWeekly()
+    ? "通常授業モード：毎週同じ時間割を組みます（日付なし・1週間分）。ユニットの回数は「週あたりの回数」として扱ってください。"
+    : "講習モード：開始日からの複数週に日付付きで配置します。「同じユニットは1日1回まで」「なるべくばらけさせる」の判定に使います。";
+
+  const kt=document.getElementById("komaTable");
+  kt.innerHTML="<tr><th>コマ</th><th>時間</th><th>遅い時間・なるべく避ける</th><th>遅い時間・入れない</th><th></th></tr>";
+  state.komas.forEach((k,idx)=>{
+    const tr=document.createElement("tr");
+    tr.innerHTML=`<td><input type="text" value="${k.label}"></td>
+      <td><input type="text" value="${k.time}"></td>
+      <td style="text-align:center"><input type="checkbox" ${k.avoidMS?"checked":""}></td>
+      <td style="text-align:center"><input type="checkbox" ${k.forbidMS?"checked":""}></td>
+      <td class="row-actions"><button class="btn small danger" onclick="delKoma(${idx})">削除</button></td>`;
+    const [lab,tim]=tr.querySelectorAll("input[type=text]");
+    const [av,fo]=tr.querySelectorAll("input[type=checkbox]");
+    lab.onchange=e=>{k.label=e.target.value;save();};
+    tim.onchange=e=>{k.time=e.target.value;save();};
+    av.onchange=e=>{k.avoidMS=e.target.checked;save();};
+    fo.onchange=e=>{k.forbidMS=e.target.checked;save();};
+    kt.appendChild(tr);
+  });
+}
+function addKoma(){ const n=state.komas.length+1; state.komas.push({id:Date.now(),label:n+"限",time:"",avoidMS:false,forbidMS:false}); save(); renderConfig(); }
+function delKoma(i){ state.komas.splice(i,1); save(); renderConfig(); }
+
+/* ---------- 講師描画 ---------- */
+function renderTeachers(){
+  const t=document.getElementById("teacherTable");
+  t.innerHTML="<tr><th>氏名</th><th>雇用</th><th>出勤可能</th><th>担当ユニット数</th><th></th></tr>";
+  state.teachers.forEach((tc,idx)=>{
+    const cnt=state.units.filter(u=>u.teacherId===tc.id).length;
+    const av=state.teacherAvailability[tc.id]||{};
+    const acnt=Object.keys(av).length;
+    const tr=document.createElement("tr");
+    tr.innerHTML=`<td><input type="text" value="${tc.name}"></td>
+      <td><select><option value="reg">正規</option><option value="part">バイト</option></select></td>
+      <td><button class="btn small" onclick="openAvail('teacher','${tc.id}')">出勤可能（${acnt}枠）</button></td>
+      <td>${cnt}</td>
+      <td class="row-actions">
+        <button class="btn small" ${idx===0?"disabled":""} onclick="moveTeacher(${idx},-1)">↑</button>
+        <button class="btn small" ${idx===state.teachers.length-1?"disabled":""} onclick="moveTeacher(${idx},1)">↓</button>
+        <button class="btn small danger" onclick="delTeacher('${tc.id}')">削除</button></td>`;
+    tr.querySelector("input").onchange=e=>{tc.name=e.target.value;save();renderUnits();};
+    const sel=tr.querySelector("select"); sel.value=tc.part?"part":"reg";
+    sel.onchange=e=>{tc.part=e.target.value==="part";save();};
+    t.appendChild(tr);
+  });
+}
+function addTeacher(){ const id=uid("t"); state.teachers.push({id,name:"新しい講師",part:!!DEF().teacherPart}); fillTeacherFull(id); save(); renderTeachers(); renderUnits(); }
+function delTeacher(id){
+  if(state.units.some(u=>u.teacherId===id)){ toast("この講師が担当するユニットがあります。先に担当を変更してください"); return; }
+  const i=state.teachers.findIndex(t=>t.id===id); if(i>=0) state.teachers.splice(i,1); // 共有配列を直接編集
+  delete state.teacherAvailability[id]; save(); renderTeachers();
+}
+
+/* ---------- 生徒描画 ---------- */
+function renderStudents(){
+  const t=document.getElementById("studentTable");
+  const done=state.students.filter(s=>s.submitted).length;
+  const sum=document.getElementById("submitSummary");
+  if(sum) sum.innerHTML=state.students.length?`時間割提出：<b>${done} / ${state.students.length}</b> 人 ${done<state.students.length?`<span class="tag" style="background:#fff4e0;color:var(--warn)">未提出 ${state.students.length-done}人</span>`:'<span class="tag reg">全員提出済み 🎉</span>'}`:"";
+  t.innerHTML="<tr><th>氏名</th><th>学年</th><th>時間割提出</th><th>遅い時間NG</th><th>空き可(自習)</th><th>登校可能</th><th>所属ユニット</th><th></th></tr>";
+  state.students.forEach((s,idx)=>{
+    const av=state.availability[s.id]||{};
+    const cnt=Object.keys(av).length;
+    const belong=state.units.filter(u=>u.members.includes(s.id)).map(u=>u.subject).join("・")||"—";
+    const tr=document.createElement("tr");
+    if(!s.submitted) tr.style.background="#fffaf0";
+    tr.innerHTML=`<td><input type="text" value="${s.name}">${s.submitted?"":' <span class="tag" style="background:#fff4e0;color:var(--warn)">未提出</span>'}</td>
+      <td><select>${GRADES.map(g=>`<option ${g===s.grade?"selected":""}>${g}</option>`).join("")}</select></td>
+      <td style="text-align:center"><input type="checkbox" class="subm" ${s.submitted?"checked":""}></td>
+      <td style="text-align:center"><input type="checkbox" class="late" ${s.lateNG?"checked":""}></td>
+      <td style="text-align:center"><input type="checkbox" class="flex" ${s.flexGap?"checked":""}></td>
+      <td>${s.submitted
+        ? `<button class="btn small" onclick="openAvail('student','${s.id}')">登校可能（${cnt}枠）</button>`
+        : `<span class="muted" style="font-size:12px">全日程可として扱う<br>（提出後に編集可）</span>`}</td>
+      <td class="muted" style="font-size:12px">${belong}</td>
+      <td class="row-actions">
+        <button class="btn small" ${idx===0?"disabled":""} onclick="moveStudent(${idx},-1)">↑</button>
+        <button class="btn small" ${idx===state.students.length-1?"disabled":""} onclick="moveStudent(${idx},1)">↓</button>
+        <button class="btn small danger" onclick="delStudent('${s.id}')">削除</button></td>`;
+    tr.querySelector("input[type=text]").onchange=e=>{s.name=e.target.value;save();renderUnits();};
+    tr.querySelector("select").onchange=e=>{s.grade=e.target.value;save();};
+    tr.querySelector("input.subm").onchange=e=>{s.submitted=e.target.checked;save();renderStudents();};
+    tr.querySelector("input.late").onchange=e=>{s.lateNG=e.target.checked;save();};
+    tr.querySelector("input.flex").onchange=e=>{s.flexGap=e.target.checked;save();};
+    t.appendChild(tr);
+  });
+}
+function addStudent(){
+  const id=uid("s"); const d=DEF(); const g=d.studentGrade||"中1";
+  const lateNG = d.studentLateNG==="on"?true : d.studentLateNG==="off"?false : isMS12(g);
+  const flexGap = d.studentFlexGap==="on"?true : d.studentFlexGap==="off"?false : isExam(g);
+  state.students.push({id,name:"新しい生徒",grade:g,lateNG,flexGap,submitted:false});
+  if(d.studentAvailFull) fillStudentFull(id); else state.availability[id]={};
+  save(); renderStudents();
+}
+function moveItem(arr,idx,dir){ const j=idx+dir; if(j<0||j>=arr.length) return false; [arr[idx],arr[j]]=[arr[j],arr[idx]]; return true; }
+function moveTeacher(idx,dir){ if(moveItem(state.teachers,idx,dir)){ save(); renderTeachers(); } }
+function moveStudent(idx,dir){ if(moveItem(state.students,idx,dir)){ save(); renderStudents(); } }
+function delStudent(id){
+  const doDelete=()=>{ state.units.forEach(u=>u.members=u.members.filter(m=>m!==id));
+    const i=state.students.findIndex(s=>s.id===id); if(i>=0) state.students.splice(i,1); // 共有配列を直接編集
+    delete state.availability[id]; cleanFlexRefs(); // 全シーズンのかけもちから除去
+    save(); renderStudents(); renderUnits(); renderFlex(); };
+  if(state.units.some(u=>u.members.includes(id))){ askConfirm("この生徒はユニットに所属しています。所属からも外して削除しますか？",doDelete); }
+  else doDelete();
+}
+
+/* ---------- 登校可能モーダル ---------- */
+let editingAvailWeek=0;
+function gridDows(){ return state.openDows.slice().sort((a,b)=>a-b); } // 入力グリッドも開校日設定に従う（日曜始まり）
+let availUndo=[], _painting=false, _paintOn=false;
+function pushAvailUndo(){ availUndo.push(JSON.stringify(availMapFor())); if(availUndo.length>60) availUndo.shift(); updateUndoBtn(); }
+function undoAvail(){
+  if(!availUndo.length){ toast("戻せる操作がありません"); return; }
+  const snap=JSON.parse(availUndo.pop());
+  if(editingAvailKind==="teacher") state.teacherAvailability[editingAvailId]=snap;
+  else if(editingAvailKind==="pin"){ const u=state.units.find(x=>x.id===editingAvailId); if(u) u.pins=snap; }
+  else state.availability[editingAvailId]=snap;
+  save(); renderAvailGrid(); updateUndoBtn();
+}
+function updateUndoBtn(){ const b=document.getElementById("undoBtn"); if(b) b.disabled=!availUndo.length; }
+window.addEventListener("mouseup",()=>{ if(_painting){ _painting=false; save(); refreshAvailTabCounts(); } });
+function availMapFor(){
+  if(editingAvailKind==="teacher"){
+    if(state.teacherAvailability[editingAvailId]===undefined) fillTeacherFull(editingAvailId);
+    return state.teacherAvailability[editingAvailId];
+  }
+  if(editingAvailKind==="pin"){ const u=state.units.find(x=>x.id===editingAvailId); return u.pins||(u.pins={}); }
+  return state.availability[editingAvailId]||(state.availability[editingAvailId]={});
+}
+const HINT_AVAIL="週タブで各週を切替。クリックで <b>○（来られる）→△（来られるが避けたい）→空（来られない）</b> の順に切替、<b>ドラッグでなぞる</b>とまとめて塗れます。曜日名クリックでその曜日を一括切替。△に授業が入るとソフト違反として数えます。";
+function openAvail(kind,id){
+  editingAvailKind=kind; editingAvailId=id; editingAvailWeek=0; availUndo=[];
+  const isPin=kind==="pin";
+  document.getElementById("copyWeekBtn").style.display=(isPin||state.weeks<2)?"none":"";
+  document.getElementById("allOnBtn").style.display=isPin?"none":"";
+  document.getElementById("allOffBtn").textContent=isPin?"この週の固定を解除":"この週 全OFF";
+  if(kind==="teacher"){
+    const t=teacherById(id);
+    if(state.teacherAvailability[id]===undefined){ fillTeacherFull(id); save(); } // データ未作成なら全枠可で作成
+    document.getElementById("availTitle").textContent=t.name+" の出勤可能時間";
+    document.getElementById("availHint").innerHTML="週タブで各週を切替。クリックで <b>○（出勤できる）→△（出勤できるが避けたい）→空（出勤不可）</b> の順に切替、<b>ドラッグでなぞる</b>とまとめて塗れます。△に授業が入るとソフト違反として数えます（重みなしの単純加算）。";
+  }else if(isPin){
+    const u=state.units.find(x=>x.id===id); const tc=teacherById(u.teacherId);
+    document.getElementById("availTitle").textContent=`「${u.subject}／${tc?tc.name:"?"}」のコマ固定`;
+    document.getElementById("availHint").innerHTML="固定したいマスをクリック。固定したコマは生成時に必ずその位置に置かれ、残りは自動配置されます。<span style='color:var(--bad)'>赤みのマス</span>＝メンバーの登校不可・講師の出勤不可など、条件に合わない位置（固定はできますがチェック結果に警告が出ます）。";
+  }else{
+    const s=studentById(id); state.availability[id]=state.availability[id]||{};
+    document.getElementById("availTitle").textContent=s.name+" の登校可能時間";
+    document.getElementById("availHint").innerHTML=HINT_AVAIL;
+  }
+  renderAvailGrid();
+  document.getElementById("availModal").classList.add("open");
+}
+function renderAvailGrid(){
+  const w=editingAvailWeek; const av=availMapFor();
+  const dows=gridDows();
+  // 週タブ
+  const tabs=document.getElementById("availTabs"); tabs.innerHTML="";
+  tabs.style.display = state.weeks>1 ? "" : "none"; // 通常授業（1週）ではタブ不要
+  for(let ww=0;ww<state.weeks;ww++){
+    const cnt=Object.keys(av).filter(k=>k.startsWith(ww+"_")).length;
+    const b=document.createElement("button");
+    b.className="btn small"+(ww===w?" primary":"");
+    b.innerHTML=`第${ww+1}週 <span style="opacity:.7">${cnt}</span>`;
+    b.onclick=()=>{ editingAvailWeek=ww; renderAvailGrid(); };
+    tabs.appendChild(b);
+  }
+  // グリッド（全曜日。休校日は薄く表示するが入力は可能）
+  const g=document.getElementById("availGrid");
+  let html="<tr><th>コマ＼曜日</th>";
+  dows.forEach(d=>{ const open=state.openDows.includes(d);
+    html+=`<th class="dow" data-d="${d}" style="${open?'':'opacity:.6'}">${DOW[d]}${open?'':'<span style="color:var(--warn)">休</span>'}<br><span class="muted" style="font-weight:400">${dateSub(w,d)}</span></th>`; });
+  html+="</tr>";
+  const isPin=editingAvailKind==="pin";
+  const pinUnit=isPin? state.units.find(x=>x.id===editingAvailId) : null;
+  const pinFeasible=(key,koma)=>{ // 参考表示: メンバー登校可・講師出勤可・遅時間NGでないか
+    if(!teacherAvailable(pinUnit.teacherId,key)) return false;
+    for(const m of pinUnit.members){ if(!studentCanAttend(m,key)) return false; }
+    if(koma.forbidMS && unitHasLateNG(pinUnit)) return false;
+    return true;
+  };
+  const MARK=isPin?"📌":"○";
+  const isTri=editingAvailKind!=="pin"; // 生徒・講師とも ○→△→× の3状態（固定は2状態）
+  const stateOf=(v)=> v===2?2 : (v?1:0);
+  const CLS=["off","on","tri"], TXT=["",MARK,"△"];
+  state.komas.forEach(k=>{
+    html+=`<tr><th style="text-align:left;white-space:nowrap">${k.label} <span class="muted" style="font-weight:400">${k.time}</span></th>`;
+    dows.forEach(d=>{
+      const key=w+"_"+d+"_"+k.id; const st=stateOf(av[key]); const open=state.openDows.includes(d);
+      const na=isPin && !pinFeasible(key,k) ? " na":"";
+      html+=`<td class="${CLS[st]}${open?'':' closed'}${na}" data-key="${key}">${TXT[st]}</td>`;
+    });
+    html+="</tr>";
+  });
+  g.innerHTML=html;
+  // ドラッグでまとめて塗る（最初のセルの「次の状態」を、なぞったセル全部に適用）
+  let _paintVal=0;
+  const paintCell=(td,key)=>{ const c=(td.classList.contains("closed")?" closed":"")+(td.classList.contains("na")?" na":"");
+    if(_paintVal===0) delete av[key]; else av[key]=_paintVal;
+    td.className=CLS[_paintVal]+c; td.textContent=TXT[_paintVal]; };
+  g.querySelectorAll("td[data-key]").forEach(td=>{
+    td.tabIndex=0; // キーボード操作: Tabで移動、Space/Enterで切替、矢印キーで隣へ
+    td.onmousedown=(e)=>{ e.preventDefault(); pushAvailUndo(); _painting=true;
+      _paintVal=isTri ? (stateOf(av[td.dataset.key])+1)%3 : (av[td.dataset.key]?0:1);
+      paintCell(td,td.dataset.key); };
+    td.onmouseenter=()=>{ if(_painting) paintCell(td,td.dataset.key); };
+    td.onkeydown=(e)=>{
+      if(e.key===" "||e.key==="Enter"){
+        e.preventDefault(); pushAvailUndo();
+        _paintVal=isTri ? (stateOf(av[td.dataset.key])+1)%3 : (av[td.dataset.key]?0:1);
+        paintCell(td,td.dataset.key); save(); refreshAvailTabCounts();
+      }else if(e.key.startsWith("Arrow")){
+        e.preventDefault();
+        const tr=td.parentElement, ci=td.cellIndex; let target=null;
+        if(e.key==="ArrowRight") target=tr.cells[ci+1];
+        else if(e.key==="ArrowLeft") target=ci>1?tr.cells[ci-1]:null;
+        else{ const nr=g.rows[tr.rowIndex+(e.key==="ArrowDown"?1:-1)]; if(nr) target=nr.cells[ci]; }
+        if(target&&target.dataset&&target.dataset.key) target.focus();
+      }
+    };
+  });
+  if(!isPin) g.querySelectorAll("th.dow").forEach(th=>{
+    th.onclick=()=>{ pushAvailUndo(); const d=+th.dataset.d; const anyOff=state.komas.some(k=>!av[w+"_"+d+"_"+k.id]);
+      state.komas.forEach(k=>{ const key=w+"_"+d+"_"+k.id; if(anyOff)av[key]=true; else delete av[key]; });
+      save(); renderAvailGrid(); };
+  });
+  updateUndoBtn();
+}
+function refreshAvailTabCounts(){
+  const av=availMapFor();
+  document.querySelectorAll("#availTabs button").forEach((b,ww)=>{
+    b.querySelector("span").textContent=Object.keys(av).filter(k=>k.startsWith(ww+"_")).length;
+  });
+}
+function availAll(on){
+  pushAvailUndo();
+  const av=availMapFor(); const w=editingAvailWeek;
+  Object.keys(av).forEach(k=>{ if(k.startsWith(w+"_")) delete av[k]; });
+  if(on){ state.openDows.forEach(d=> state.komas.forEach(k=> av[w+"_"+d+"_"+k.id]=true)); } // 全ONは開校日のみ（日曜は手動）
+  save(); renderAvailGrid();
+}
+function copyWeekToAll(){
+  pushAvailUndo();
+  const av=availMapFor(); const w=editingAvailWeek;
+  const pat=Object.keys(av).filter(k=>k.startsWith(w+"_")).map(k=>[k.split("_").slice(1).join("_"), av[k]]); // [d_k, 値(○/△)]
+  for(let ww=0;ww<state.weeks;ww++){
+    if(ww===w) continue;
+    Object.keys(av).forEach(k=>{ if(k.startsWith(ww+"_")) delete av[k]; });
+    pat.forEach(([dk,v])=> av[ww+"_"+dk]=v);
+  }
+  save(); renderAvailGrid(); toast(`第${w+1}週の内容を全週にコピーしました`);
+}
+function closeAvail(){
+  if(editingAvailKind==="pin"){
+    const u=state.units.find(x=>x.id===editingAvailId);
+    if(u && Object.keys(u.pins).length>uMax(u)) toast(`固定が最大回数（${uMax(u)}）を超えています`);
+  }
+  document.getElementById("availModal").classList.remove("open"); renderStudents(); renderTeachers(); renderUnits();
+}
+
+/* ---------- ユニット描画 ---------- */
+let unitSel=new Set(); // 部分自動配置の選択ユニット
+function toggleUnitSel(id,on){ if(on) unitSel.add(id); else unitSel.delete(id); updateUnitSelBar(); syncGroupChecks(); }
+function syncGroupChecks(){ document.querySelectorAll('#unitTable input.gsel[data-tid]').forEach(g=>{
+  const us=state.units.filter(u=>u.teacherId===g.dataset.tid);
+  g.checked=us.length>0&&us.every(u=>unitSel.has(u.id)); }); }
+function toggleGroupSel(tid,on){ state.units.filter(u=>u.teacherId===tid).forEach(u=>{ if(on) unitSel.add(u.id); else unitSel.delete(u.id); }); renderUnits(); }
+function updateUnitSelBar(){ const el=document.getElementById("unitSelCount"); if(el) el.textContent=unitSel.size?`（${unitSel.size}ユニット選択中）`:""; }
+function renderUnits(){
+  unitSel=new Set([...unitSel].filter(id=>state.units.some(u=>u.id===id)));
+  const t=document.getElementById("unitTable");
+  t.innerHTML=`<tr><th style="width:1%">選択</th><th>科目</th><th>担当講師</th><th>メンバー</th><th>${isWeekly()?"回数":"回数（最低〜最大）"}</th><th>コマ固定</th><th></th></tr>`;
+  // 担当講師ごとにグループ化（講師の登録順。担当が消えたユニットは末尾）
+  const groups=state.teachers.map(tc=>({tc, units:state.units.filter(u=>u.teacherId===tc.id)})).filter(g=>g.units.length);
+  const orphan=state.units.filter(u=>!state.teachers.some(tc=>tc.id===u.teacherId));
+  if(orphan.length) groups.push({tc:null, units:orphan});
+  groups.forEach(g=>{
+    const tid=g.tc?g.tc.id:"";
+    const [bg,bd]=g.tc?teacherColor(tid):["#f2f4f7","#9aa2ad"];
+    const allSel=g.units.every(u=>unitSel.has(u.id));
+    const gtr=document.createElement("tr");
+    gtr.innerHTML=`<td colspan="7" style="background:${bg};border-left:4px solid ${bd};padding:6px 10px">
+      <label style="display:inline-flex;align-items:center;gap:6px;font-weight:700">
+        <input type="checkbox" class="gsel" data-tid="${tid}" ${allSel?"checked":""}> ${g.tc?g.tc.name+(g.tc.part?"（バイト）":""):"担当未設定"}
+        <span class="muted" style="font-weight:400">${g.units.length}ユニット・計${g.units.reduce((a,u)=>a+uMin(u),0)}コマ</span></label>
+      <span style="float:right">
+        <button class="btn small" onclick="autoPlaceUnits(${JSON.stringify(g.units.map(u=>u.id)).replace(/"/g,"&quot;")})">⚡ この講師だけ自動配置</button>
+        <button class="btn small" onclick="clearUnitsPlacement(${JSON.stringify(g.units.map(u=>u.id)).replace(/"/g,"&quot;")})">配置を解除</button>
+      </span></td>`;
+    gtr.querySelector("input.gsel").onchange=e=>toggleGroupSel(tid,e.target.checked);
+    t.appendChild(gtr);
+    g.units.forEach(u=>{
+      const tr=document.createElement("tr");
+      const memNames=u.members.map(m=>{const s=studentById(m);return s?`<span class="tag">${s.name}</span>`:"";}).join("");
+      const pinCnt=Object.keys(u.pins||{}).length;
+      tr.innerHTML=`<td style="text-align:center"><input type="checkbox" class="usel" ${unitSel.has(u.id)?"checked":""}></td>
+        <td><input type="text" value="${u.subject}" style="width:90px"></td>
+        <td><select class="tsel">${state.teachers.map(tc=>`<option value="${tc.id}" ${tc.id===u.teacherId?"selected":""}>${tc.name}</option>`).join("")}</select></td>
+        <td class="members-cell">${memNames||'<span class="empty">未設定</span>'}<br><button class="btn small" onclick="editMembers('${u.id}')">メンバー選択</button></td>
+        <td style="white-space:nowrap">${isWeekly()
+          ? `<b>週1回（固定）</b><br><span class="muted" style="font-size:11px">講習用の回数 ${u.komaMin}${u.komaMax!==u.komaMin?"〜"+u.komaMax:""} は保持</span>`
+          : (u.komaMin===u.komaMax
+            ? `<input type="number" class="kfix" min="1" value="${u.komaMin}" style="width:58px"> 回 <button class="btn small" onclick="toggleRange('${u.id}')">幅にする</button>`
+            : `<input type="number" class="kmin" min="1" value="${u.komaMin}" style="width:50px"> 〜 <input type="number" class="kmax" min="1" value="${u.komaMax}" style="width:50px"> <button class="btn small" onclick="toggleRange('${u.id}')">固定にする</button>`)}</td>
+        <td><button class="btn small" onclick="openAvail('pin','${u.id}')">📌 固定（${pinCnt}）</button></td>
+        <td class="row-actions">
+          <button class="btn small" onclick="moveUnitGrp('${u.id}',-1)">↑</button>
+          <button class="btn small" onclick="moveUnitGrp('${u.id}',1)">↓</button>
+          <button class="btn small danger" onclick="delUnit('${u.id}')">削除</button></td>`;
+      tr.querySelector("input.usel").onchange=e=>toggleUnitSel(u.id,e.target.checked);
+      tr.querySelector("input[type=text]").onchange=e=>{u.subject=e.target.value;save();};
+      tr.querySelector("select.tsel").onchange=e=>{u.teacherId=e.target.value;save();renderTeachers();renderUnits();};
+      const kfix=tr.querySelector("input.kfix"), kmin=tr.querySelector("input.kmin"), kmax=tr.querySelector("input.kmax");
+      if(kfix) kfix.onchange=e=>{const v=Math.max(1,+e.target.value||1); u.komaMin=v; u.komaMax=v; save(); renderUnits();};
+      if(kmin) kmin.onchange=e=>{u.komaMin=Math.max(1,+e.target.value||1); if(u.komaMax<u.komaMin)u.komaMax=u.komaMin; save(); renderUnits();};
+      if(kmax) kmax.onchange=e=>{u.komaMax=Math.max(u.komaMin,+e.target.value||u.komaMin); save(); renderUnits();};
+      t.appendChild(tr);
+    });
+  });
+  updateUnitSelBar();
+}
+// グループ内での↑↓（同じ講師のユニット同士で入れ替え）
+function moveUnitGrp(uid,dir){
+  const u=state.units.find(x=>x.id===uid); if(!u) return;
+  const sib=state.units.filter(x=>x.teacherId===u.teacherId);
+  const gi=sib.findIndex(x=>x.id===uid); const ni=gi+dir;
+  if(ni<0||ni>=sib.length) return;
+  const a=state.units.indexOf(sib[gi]), b=state.units.indexOf(sib[ni]);
+  [state.units[a],state.units[b]]=[state.units[b],state.units[a]];
+  save(); renderUnits(); renderDashboard();
+}
+function toggleRange(id){ const u=state.units.find(x=>x.id===id); if(!u) return;
+  if(u.komaMin===u.komaMax) u.komaMax=u.komaMin+2;  // 幅にする（既定で+2の余地）
+  else u.komaMax=u.komaMin;                          // 固定にする
+  save(); renderUnits(); }
+function bulkSetKoma(){ const v=Math.max(1,+document.getElementById("bulkKoma").value||1);
+  askConfirm(`全 ${state.units.length} ユニットの回数を ${v} 回（固定）に変更します。よろしいですか？（個別の幅設定は上書きされます）`,()=>{
+    state.units.forEach(u=>{ u.komaMin=v; u.komaMax=v; }); save(); renderUnits(); toast(`全ユニットを ${v}回 に変更しました`); }); }
+function addUnit(){
+  if(state.teachers.length===0){ toast("先に講師を登録してください"); showPanel("teachers"); return; }
+  const d=DEF(); const mn=Math.max(1,d.unitKomaMin||8), mx=Math.max(mn,d.unitKomaMax||mn);
+  state.units.push({id:uid("u"),subject:"新科目",teacherId:state.teachers[0].id,members:[],komaMin:mn,komaMax:mx,pins:{}});
+  save(); renderUnits(); renderTeachers();
+}
+function delUnit(id){
+  const i=state.units.findIndex(u=>u.id===id); if(i>=0) state.units.splice(i,1); // 共有配列を直接編集（全シーズンに反映）
+  cleanFlexRefs(); // 削除ユニットへの参照を全シーズンのかけもちから除去
+  save(); renderUnits(); renderTeachers(); renderStudents(); renderFlex();
+}
+let editingUnitId=null;
+function editMembers(uid_){
+  if(state.students.length===0){ toast("先に生徒を登録してください"); return; }
+  editingUnitId=uid_;
+  const u=state.units.find(x=>x.id===uid_);
+  document.getElementById("memberTitle").textContent=`「${u.subject}」のメンバーを選択`;
+  renderMemberList();
+  document.getElementById("memberModal").classList.add("open");
+}
+function renderMemberList(){
+  const u=state.units.find(x=>x.id===editingUnitId);
+  const bar=document.getElementById("memberSortBar");
+  if(bar) bar.innerHTML=`<span class="muted" style="font-size:12px">並び替え：</span>
+    <button class="btn small" onclick="sortStudents('grade')">学年順</button>
+    <button class="btn small" onclick="sortStudents('name')">名前順</button>`;
+  const list=document.getElementById("memberList");
+  list.innerHTML=state.students.map(s=>{
+    const on=u.members.includes(s.id);
+    return `<label style="display:flex;align-items:center;gap:8px;padding:6px 4px;border-bottom:1px solid var(--line)">
+      <input type="checkbox" data-sid="${s.id}" ${on?"checked":""}>
+      <span>${s.name} <span class="pill">${s.grade}</span></span></label>`;
+  }).join("");
+  list.querySelectorAll("input[type=checkbox]").forEach(cb=>{
+    cb.onchange=()=>{
+      const sid=cb.dataset.sid;
+      if(cb.checked){
+        if(!u.members.includes(sid)) u.members.push(sid);
+      }else u.members=u.members.filter(m=>m!==sid);
+      save(); updateMemberCount();
+    };
+  });
+  updateMemberCount();
+}
+function updateMemberCount(){
+  const u=state.units.find(x=>x.id===editingUnitId);
+  document.getElementById("memberCount").textContent=`現在 ${u.members.length} 人`;
+}
+function closeMembers(){ document.getElementById("memberModal").classList.remove("open"); renderUnits(); renderStudents(); }
+
+/* ---------- かけもち受講（合計回数指定） ---------- */
+let editingFlexId=null;
+function unitLabel(u){ const tc=teacherById(u.teacherId); return `${u.subject}／${tc?tc.name:"?"}（${u.members.map(m=>{const s=studentById(m);return s?s.name:"";}).filter(Boolean).join("・")||"メンバー未設定"}）`; }
+function renderFlex(){
+  const t=document.getElementById("flexTable");
+  t.innerHTML="<tr><th>生徒</th><th>合計回数</th><th>対象ユニット</th><th></th></tr>";
+  state.flex.forEach(f=>{
+    const tr=document.createElement("tr");
+    const names=f.unitIds.map(id=>{const u=state.units.find(x=>x.id===id);return u?`<span class="tag">${u.subject}／${(teacherById(u.teacherId)||{}).name||"?"}</span>`:"";}).join("");
+    tr.innerHTML=`<td><select class="fsel">${state.students.map(s=>`<option value="${s.id}" ${s.id===f.studentId?"selected":""}>${s.name}（${s.grade}）</option>`).join("")}</select></td>
+      <td><input type="number" min="1" value="${f.count}"></td>
+      <td class="members-cell">${names||'<span class="empty">未選択</span>'}<br><button class="btn small" onclick="openFlexUnits('${f.id}')">対象ユニットを選択（${f.unitIds.length}）</button></td>
+      <td class="row-actions"><button class="btn small danger" onclick="delFlex('${f.id}')">削除</button></td>`;
+    tr.querySelector("select.fsel").onchange=e=>{f.studentId=e.target.value;save();};
+    tr.querySelector("input[type=number]").onchange=e=>{f.count=Math.max(1,+e.target.value||1);save();};
+    t.appendChild(tr);
+  });
+}
+function addFlex(){
+  if(state.students.length===0){ toast("先に生徒を登録してください"); showPanel("students"); return; }
+  if(state.units.length===0){ toast("先にユニットを登録してください"); return; }
+  state.flex.push({id:uid("f"),studentId:state.students[0].id,count:Math.max(1,DEF().flexCount||8),unitIds:[]});
+  save(); renderFlex();
+}
+function delFlex(id){ state.flex=state.flex.filter(f=>f.id!==id); save(); renderFlex(); }
+function openFlexUnits(fid){
+  editingFlexId=fid;
+  const f=state.flex.find(x=>x.id===fid); const st=studentById(f.studentId);
+  document.getElementById("flexTitle").textContent=`${st?st.name:"?"} の対象ユニットを選択`;
+  const bar=document.getElementById("flexSortBar");
+  if(bar) bar.innerHTML=`<span class="muted" style="font-size:12px">並び替え：</span>
+    <button class="btn small" onclick="sortUnits('teacher')">講師順</button>
+    <button class="btn small" onclick="sortUnits('subject')">科目順</button>
+    <button class="btn small" onclick="sortUnits('grade')">学年順</button>`;
+  const list=document.getElementById("flexUnitList");
+  list.innerHTML=state.units.map(u=>{
+    const on=f.unitIds.includes(u.id);
+    return `<label style="display:flex;align-items:center;gap:8px;padding:6px 4px;border-bottom:1px solid var(--line)">
+      <input type="checkbox" data-uid="${u.id}" ${on?"checked":""}>
+      <span>${unitLabel(u)} <span class="pill">${uMin(u)===uMax(u)?uMin(u):uMin(u)+"〜"+uMax(u)}コマ</span></span></label>`;
+  }).join("");
+  list.querySelectorAll("input[type=checkbox]").forEach(cb=>{
+    cb.onchange=()=>{ const id=cb.dataset.uid;
+      if(cb.checked){ if(!f.unitIds.includes(id)) f.unitIds.push(id); }
+      else f.unitIds=f.unitIds.filter(x=>x!==id);
+      save(); updateFlexCount(); };
+  });
+  updateFlexCount();
+  document.getElementById("flexModal").classList.add("open");
+}
+function updateFlexCount(){
+  const f=state.flex.find(x=>x.id===editingFlexId);
+  document.getElementById("flexCount").textContent=`選択中 ${f.unitIds.length} ユニット`;
+}
+function closeFlexUnits(){ document.getElementById("flexModal").classList.remove("open"); renderFlex(); }
+
+/* ================= 配置エンジン ================= */
+function dayIdOf(w,d){ return w*7+((d+6)%7); } // 同日判定用の一意ID（休校日含め全曜日で有効）
+function slotOf(w,d,k){
+  const koma=state.komas.find(x=>x.id===k)||{id:k,label:"?",time:"",avoidMS:false,forbidMS:false};
+  return {w,d,k,koma,dayId:dayIdOf(w,d)};
+}
+function buildTimeline(){
+  // slot: {w, d(dow), k(komaId)}
+  const dows=state.openDows.slice();
+  const slots=[];
+  for(let w=0;w<state.weeks;w++)
+    for(const d of dows)
+      for(const k of state.komas)
+        slots.push({w,d,k:k.id,koma:k,dayId:dayIdOf(w,d)});
+  return slots;
+}
+function availSet(sid){ return state.availability[sid]||{}; }
+// 生徒がその枠に来られるか。未提出の生徒は「全日程出席可能」として扱う（提出済みになると入力した登校可能が反映される）
+function studentCanAttend(sid,key){ const s=studentById(sid); if(s&&!s.submitted) return true; return !!(state.availability[sid]||{})[key]; }
+// △（来られるが避けたい）か。未提出は対象外
+function studentPrefersNot(sid,key){ const s=studentById(sid); if(s&&!s.submitted) return false; return (state.availability[sid]||{})[key]===2; }
+// 講師の△（出勤できるが避けたい）。重みなしで違反スコアに単純加算
+function teacherPrefersNot(tid,key){ const av=state.teacherAvailability[tid]; return !!av && av[key]===2; }
+
+/* ---------- 生徒ごとの重み（余裕パラメータ） ----------
+   余裕 = 出席可能コマ数 − 予定コマ数（開校日の枠のみ集計）。
+   重み = 余裕/出席可能 = 1 − 予定/出席可能（連続。飽和なし）。
+   例: 可能=予定の4倍→0.75、2倍→0.5、1.33倍→0.25、余裕0以下→0（スコアに加算しない）。 */
+let SW=null;
+function studentSurplus(sid){
+  const s=studentById(sid); if(!s) return {need:0,avail:0,surplus:0,w:1};
+  let need=0;
+  state.units.forEach(u=>{ if(u.members.includes(sid)) need+=uMin(u); });
+  state.flex.forEach(f=>{ if(f.studentId===sid) need+=f.count; });
+  let avail;
+  if(!s.submitted) avail=state.weeks*state.openDows.length*state.komas.length;
+  else{
+    avail=0; const av=state.availability[sid]||{};
+    for(let w=0;w<state.weeks;w++) for(const d of state.openDows) for(const k of state.komas)
+      if(av[w+"_"+d+"_"+k.id]) avail++;
+  }
+  const surplus=avail-need;
+  const w=need<=0?1 : avail<=0?0 : Math.max(0, surplus/avail); // 連続: 1−予定/可能
+  return {need,avail,surplus,w};
+}
+function studentWeights(){
+  if(!SW){ SW={}; state.students.forEach(s=>SW[s.id]=studentSurplus(s.id)); }
+  return SW;
+}
+function unitHasLateNG(u){ return u.members.some(m=>{const s=studentById(m);return s&&s.lateNG;}); }
+// 講師の出勤可否（データ未作成＝全時間可の保険／オブジェクトがあれば厳密＝空は全不可）
+function teacherAvailable(tid, key){ const av=state.teacherAvailability[tid]; if(av===undefined) return true; return !!av[key]; }
+
+// ハード制約: このスロットにユニットを置けるか
+function canPlace(u, slot, occ){
+  // メンバー全員が来られる（週ごと）
+  const skey=slot.w+"_"+slot.d+"_"+slot.k;
+  for(const m of u.members){ if(!studentCanAttend(m,skey)) return false; }
+  // 担当講師が出勤可能
+  if(!teacherAvailable(u.teacherId, skey)) return false;
+  // 中1中2 入れないコマ
+  if(slot.koma.forbidMS && unitHasLateNG(u)) return false;
+  const cell=occ.cells[skey];
+  if(cell){
+    if(cell.teachers.has(u.teacherId)) return false;          // 講師重複
+    for(const m of u.members) if(cell.students.has(m)) return false; // 生徒重複
+    if(cell.units.length>=maxConcurrent()) return false;      // 教室数（最大同時授業数）上限
+  }
+  // 同じユニットは1日1回
+  if(occ.unitDays[u.id] && occ.unitDays[u.id].has(slot.dayId)) return false;
+  return true;
+}
+// 最大同時授業数（教室数）。未設定なら講師数（＝実質無制限）
+function maxConcurrent(){ const n=state.maxConcurrent; return (n&&n>0)?n:Math.max(1,state.teachers.length); }
+// そのコマに教室の空きがあるか
+function slotHasRoom(occ,key){ const c=occ.cells[key]; return (c?c.units.length:0) < maxConcurrent(); }
+function applyPlace(u, slot, occ){
+  const skey=slot.w+"_"+slot.d+"_"+slot.k;
+  let cell=occ.cells[skey]; if(!cell){cell={teachers:new Set(),students:new Set(),units:[]};occ.cells[skey]=cell;}
+  cell.teachers.add(u.teacherId); u.members.forEach(m=>cell.students.add(m)); cell.units.push({u,slot});
+  (occ.unitDays[u.id]=occ.unitDays[u.id]||new Set()).add(slot.dayId);
+  occ.sessions.push({unitId:u.id,slot});
+}
+function removePlace(sessionIdx, occ){
+  const s=occ.sessions[sessionIdx]; const u=state.units.find(x=>x.id===s.unitId); const slot=s.slot;
+  const skey=slot.w+"_"+slot.d+"_"+slot.k; const cell=occ.cells[skey];
+  // rebuild cell without this session
+  cell.units=cell.units.filter(x=>!(x.u.id===u.id && x.slot===slot));
+  cell.teachers=new Set(cell.units.map(x=>x.u.teacherId));
+  cell.students=new Set(); cell.units.forEach(x=>x.u.members.forEach(m=>cell.students.add(m)));
+  occ.unitDays[u.id].delete(slot.dayId);
+  occ.sessions.splice(sessionIdx,1);
+}
+function newOcc(){ return {cells:{},unitDays:{},sessions:[]}; }
+
+// ソフトコスト（全体を再計算・小規模なので十分高速）
+function softCost(occ){
+  let cost=0;
+  // 1) ばらけ: 各ユニットのコマを週に均等分散。理想的な均等配置で不可避なペア数を差し引き、
+  //    「余計に同じ週へ固まっている分」だけを加点（＝完全均等なら0）
+  const SPREAD_W=1.0; // 他のソフト目標（空きコマ=1.0）と同列
+  const perUnitWeek={}, perUnitTotal={};
+  occ.sessions.forEach(s=>{ const key=s.unitId+"|"+s.slot.w; perUnitWeek[key]=(perUnitWeek[key]||0)+1;
+    perUnitTotal[s.unitId]=(perUnitTotal[s.unitId]||0)+1; });
+  const actualPairs={};
+  for(const key in perUnitWeek){ const uid=key.split("|")[0]; const c=perUnitWeek[key]; actualPairs[uid]=(actualPairs[uid]||0)+c*(c-1)/2; }
+  const W=state.weeks;
+  for(const uid in perUnitTotal){
+    const total=perUnitTotal[uid]; const q=Math.floor(total/W), r=total%W;
+    const minPairs=r*(q+1)*q/2 + (W-r)*q*(q-1)/2; // 均等配置時の最小ペア数
+    cost += SPREAD_W * Math.max(0,(actualPairs[uid]||0) - minPairs);
+  }
+  // 2) 生徒の空きコマ（中3・高3除く）＋ 3) バイト講師の空きコマ
+  const komaOrder={}; state.komas.forEach((k,i)=>komaOrder[k.id]=i);
+  const perStudent={}; const perTeacherDay={};
+  occ.sessions.forEach(s=>{
+    const u=state.units.find(x=>x.id===s.unitId);
+    u.members.forEach(m=>{ const key=m+"|"+s.slot.dayId; (perStudent[key]=perStudent[key]||[]).push(komaOrder[s.slot.k]); });
+    const tkey=u.teacherId+"|"+s.slot.dayId; (perTeacherDay[tkey]=perTeacherDay[tkey]||[]).push(komaOrder[s.slot.k]);
+  });
+  const SWm=studentWeights(); // 余裕パラメータ: 登校可能が予定ギリギリの生徒の違反は減額（余裕0以下=重み0）
+  for(const key in perStudent){
+    const sid=key.split("|")[0]; const st=studentById(sid); if(st&&st.flexGap) continue; // 空きOKの生徒は除外
+    const arr=perStudent[key].sort((a,b)=>a-b); const gaps=(arr[arr.length-1]-arr[0]+1)-arr.length;
+    cost += gaps*1.0*((SWm[sid]||{w:1}).w);
+  }
+  for(const key in perTeacherDay){
+    const tid=key.split("|")[0]; const tc=teacherById(tid); if(!tc||!tc.part) continue; // バイトのみ
+    const arr=perTeacherDay[key].sort((a,b)=>a-b); const gaps=(arr[arr.length-1]-arr[0]+1)-arr.length;
+    cost += gaps*1.0;
+    // 3b) バイトの「1コマだけの出勤日」ペナルティ: 出勤日ごとに交通費がかかるため極力なくす
+    //     （まとめて出勤させる方向に働き、結果として出勤日数も減る）
+    if(arr.length===1) cost+=2.0;
+  }
+  // 4) 遅い時間「なるべく避ける」コマ ＋ 5) △（来られるが避けたい）への配置
+  occ.sessions.forEach(s=>{
+    const u=state.units.find(x=>x.id===s.unitId);
+    if(s.slot.koma.avoidMS && unitHasLateNG(u)) cost+=1.0;
+    const key=s.slot.w+"_"+s.slot.d+"_"+s.slot.k;
+    for(const m of [...u.members,...(s.extra||[])]){
+      if(studentPrefersNot(m,key)) cost += 1.0*((SWm[m]||{w:1}).w);
+    }
+    if(teacherPrefersNot(u.teacherId,key)) cost += 1.0; // 講師△は重みなし
+  });
+  return cost;
+}
+
+function schedule(){
+  const timeline=buildTimeline();
+  const occ=newOcc();
+  const unplaced=[];
+  const pinIssues=[];
+
+  // まず固定コマ（📌）を配置。人が決めた位置なので条件に合わなくても必ず置き、問題があれば報告する
+  for(const u of state.units){
+    const tc=teacherById(u.teacherId);
+    const keys=Object.keys(u.pins||{});
+    if(keys.length>uMax(u))
+      pinIssues.push({msg:`「${u.subject}／${tc?tc.name:"?"}」の固定が ${keys.length} 個あり、最大回数（${uMax(u)}）を超えています。固定を減らすか回数を増やしてください。`});
+    for(const key of keys){
+      const [w,d,k]=key.split("_").map(Number);
+      const slot=slotOf(w,d,k);
+      const where=`第${w+1}週${DOW[d]}曜 ${slot.koma.label}`;
+      if(w>=state.weeks){ pinIssues.push({msg:`「${u.subject}」の固定（${where}）が期間（${state.weeks}週）の外にあるため配置しませんでした。`}); continue; }
+      if(!state.komas.some(x=>x.id===k)){ pinIssues.push({msg:`「${u.subject}」の固定にあるコマが存在しません（削除された時間帯？）。`}); continue; }
+      const reasons=[];
+      for(const m of u.members){ if(!studentCanAttend(m,key)){ const st=studentById(m); reasons.push(`${st?st.name:m}が登校不可`); } }
+      if(!teacherAvailable(u.teacherId,key)) reasons.push(`${tc?tc.name:"講師"}が出勤不可`);
+      if(slot.koma.forbidMS && unitHasLateNG(u)) reasons.push("遅い時間NGの生徒がいる");
+      const cell=occ.cells[key];
+      if(cell){
+        if(cell.teachers.has(u.teacherId)) reasons.push("講師が同時刻に別ユニット（固定同士の衝突）");
+        for(const m of u.members) if(cell.students.has(m)){ const st=studentById(m); reasons.push(`${st?st.name:m}が同時刻に別ユニット（固定同士の衝突）`); }
+      }
+      if(occ.unitDays[u.id] && occ.unitDays[u.id].has(slot.dayId)) reasons.push("同じユニットが同日に複数回");
+      applyPlace(u,slot,occ);
+      occ.sessions[occ.sessions.length-1].pinned=true;
+      if(reasons.length) pinIssues.push({msg:`固定「${u.subject}／${tc?tc.name:"?"}」（${where}）：${reasons.join("、")}。`});
+    }
+  }
+
+  // 残りを難しい順（候補スロットが少ない / メンバー多い / コマ数多い）に自動配置
+  const order=state.units.map(u=>{
+    let feas=0; for(const sl of timeline){ // 大まかな可用性のみ
+      const sk=sl.w+"_"+sl.d+"_"+sl.k;
+      let ok=teacherAvailable(u.teacherId,sk); if(ok) for(const m of u.members){ if(!studentCanAttend(m,sk)){ok=false;break;} }
+      if(ok && !(sl.koma.forbidMS && unitHasLateNG(u))) feas++;
+    }
+    return {u,feas,score:feas - u.members.length*3 - uMin(u)*2};
+  }).sort((a,b)=>a.score-b.score);
+
+  for(const {u} of order){
+    const already=occ.sessions.filter(s=>s.unitId===u.id).length; // 固定済み分
+    const rest=Math.max(0, uMin(u)-already);
+    for(let n=0;n<rest;n++){
+      // 候補スロット
+      const cands=timeline.filter(sl=>canPlace(u,sl,occ));
+      if(cands.length===0){ unplaced.push({unitId:u.id, remaining:rest-n}); break; }
+      // 各候補を試してソフトコストが最小のものを選ぶ（同点は前半固定を避けるためランダムに）
+      let bestCost=Infinity, ties=[];
+      for(const sl of cands){
+        applyPlace(u,sl,occ); const c=softCost(occ); removeLast(occ);
+        if(c<bestCost-1e-9){bestCost=c;ties=[sl];}
+        else if(c<=bestCost+1e-9){ties.push(sl);}
+      }
+      applyPlace(u, ties[Math.floor(Math.random()*ties.length)], occ);
+    }
+  }
+  // 局所探索で改善（固定コマは動かさない）
+  localSearch(occ,timeline,1500);
+  // 追加配置: 最低回数を超えて最大回数まで「時間割を悪化させない場合のみ」入れる（無理には入れない）
+  for(const u of shuffle(state.units)){
+    let placed=occ.sessions.filter(s=>s.unitId===u.id).length;
+    while(placed<uMax(u)){
+      const cands=timeline.filter(sl=>canPlace(u,sl,occ));
+      if(!cands.length) break;
+      const base=softCost(occ);
+      let best=null,bestC=Infinity;
+      for(const sl of cands){ applyPlace(u,sl,occ); const c=softCost(occ); removeLast(occ); if(c<bestC){bestC=c;best=sl;} }
+      if(bestC-base>0.01) break; // ソフト違反が増えるなら見送り
+      applyPlace(u,best,occ); occ.sessions[occ.sessions.length-1].optional=true; placed++;
+    }
+  }
+  // かけもち受講の振り分け
+  const flexIssues=assignFlex(occ);
+  return {occ,unplaced,pinIssues,flexIssues};
+}
+
+// かけもち受講: 対象ユニットの配置済みコマへ、条件を満たす位置を選んで自動割り当て
+function assignFlex(occ){
+  const issues=[];
+  const komaOrder={}; state.komas.forEach((k,i)=>komaOrder[k.id]=i);
+  const busy={}, dayKomas={};
+  const addBusy=(sid,s)=>{
+    (busy[sid]=busy[sid]||new Set()).add(s.slot.w+"_"+s.slot.d+"_"+s.slot.k);
+    const dk=(dayKomas[sid]=dayKomas[sid]||{});
+    (dk[s.slot.dayId]=dk[s.slot.dayId]||[]).push(komaOrder[s.slot.k]);
+  };
+  occ.sessions.forEach(s=>{ const u=state.units.find(x=>x.id===s.unitId); u.members.forEach(m=>addBusy(m,s)); });
+  for(const f of state.flex){
+    const st=studentById(f.studentId);
+    if(!st) continue;
+    if(!f.unitIds.length){ issues.push({msg:`${st.name} のかけもち受講：対象ユニットが未選択です。`}); continue; }
+    const chosenDays=new Set(); const weekCnt={};
+    let got=0;
+    for(let pick=0;pick<f.count;pick++){
+      let best=null,bestScore=Infinity;
+      for(const s of occ.sessions){
+        if(!f.unitIds.includes(s.unitId)) continue;
+        if((s.extra||[]).includes(f.studentId)) continue;
+        const key=s.slot.w+"_"+s.slot.d+"_"+s.slot.k;
+        if(chosenDays.has(s.slot.dayId)) continue;                    // 同じ日に2回入れない
+        if(busy[f.studentId] && busy[f.studentId].has(key)) continue; // 同時刻の重複
+        if(!studentCanAttend(f.studentId,key)) continue;              // 登校可能な枠のみ（未提出は全枠可）
+        if(s.slot.koma.forbidMS && st.lateNG) continue;               // 遅い時間NG（ハード）
+        // スコア: 空きコマ増加＋週の偏り＋避けたい時間（低いほど良）
+        let score=0;
+        const dk=(dayKomas[f.studentId]||{})[s.slot.dayId]||[];
+        if(dk.length && !st.flexGap){
+          const before=[...dk].sort((a,b)=>a-b);
+          const after=[...dk,komaOrder[s.slot.k]].sort((a,b)=>a-b);
+          const g=(arr)=>(arr[arr.length-1]-arr[0]+1)-arr.length;
+          score+=g(after)-g(before);
+        }
+        score+=(weekCnt[s.slot.w]||0)*1.0;
+        if(s.slot.koma.avoidMS && st.lateNG) score+=1.0;
+        if(studentPrefersNot(f.studentId,key)) score+=1.0; // △はなるべく避ける
+        score+=Math.random()*0.01;
+        if(score<bestScore){bestScore=score;best=s;}
+      }
+      if(!best) break;
+      (best.extra=best.extra||[]).push(f.studentId);
+      addBusy(f.studentId,best);
+      chosenDays.add(best.slot.dayId);
+      weekCnt[best.slot.w]=(weekCnt[best.slot.w]||0)+1;
+      got++;
+    }
+    if(got<f.count){
+      const names=f.unitIds.map(id=>{const u=state.units.find(x=>x.id===id);return u?u.subject:"?";}).join("・");
+      issues.push({msg:`${st.name} のかけもち受講（${names}）：${f.count}回中 ${got}回しか割り当てられませんでした。対象ユニットを増やす・回数を減らす・登校可能時間を見直す、のいずれかが必要です。`});
+    }
+  }
+  return issues;
+}
+function removeLast(occ){ removePlace(occ.sessions.length-1,occ); }
+
+function localSearch(occ,timeline,iters){
+  let cur=softCost(occ);
+  for(let it=0;it<iters;it++){
+    if(occ.sessions.length===0) break;
+    const idx=Math.floor(Math.random()*occ.sessions.length);
+    const s=occ.sessions[idx]; if(s.pinned) continue; // 固定コマは動かさない
+    const u=state.units.find(x=>x.id===s.unitId); const oldSlot=s.slot;
+    removePlace(idx,occ);
+    const cands=timeline.filter(sl=>canPlace(u,sl,occ));
+    if(cands.length===0){ applyPlace(u,oldSlot,occ); continue; }
+    // 少数のランダム候補＋現状を比較
+    let best=oldSlot,bestCost=Infinity;
+    const sample=cands.length>18?shuffle(cands).slice(0,18):cands;
+    if(!sample.includes(oldSlot)) sample.push(oldSlot);
+    for(const sl of sample){ applyPlace(u,sl,occ); const c=softCost(occ); removeLast(occ);
+      if(c<bestCost){bestCost=c;best=sl;} }
+    applyPlace(u,best,occ);
+    cur=bestCost;
+  }
+}
+function shuffle(a){ a=a.slice(); for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];} return a; }
+
+/* ---------- 実行・描画 ---------- */
+let lastResult=null;
+function run(){
+  if(state.units.length===0){ toast("先にユニットを登録してください"); showPanel("units"); return; }
+  const t0=performance.now();
+  const res=schedule();
+  lastResult=res;
+  const ms=Math.round(performance.now()-t0);
+  const totalNeed=state.units.reduce((a,u)=>a+uMin(u),0);
+  const totalMax=state.units.reduce((a,u)=>a+uMax(u),0);
+  const placed=res.occ.sessions.length;
+  document.getElementById("runNote").textContent=`計算 ${ms}ms / 配置 ${placed}コマ・必要 ${totalNeed}${totalMax>totalNeed?`〜${totalMax}`:""}コマ`;
+  renderStats(res,totalNeed,placed);
+  renderViolations(res);
+  renderResultOutput();
+  renderDashboard();
+  document.getElementById("fillRestBtn").style.display="none";
+  showPanel("result");
+}
+// 現在の📌固定コマだけを配置した occ を作る（手動配置モードの初期状態）
+function occFromPins(){
+  const occ=newOcc();
+  state.units.forEach(u=>{ Object.keys(u.pins||{}).forEach(key=>{ const [w,d,k]=key.split("_").map(Number);
+    if(deskFree(occ,key,u.teacherId)){ applyPlace(u,slotOf(w,d,k),occ); occ.sessions[occ.sessions.length-1].pinned=true; } }); });
+  return occ;
+}
+function startManual(){
+  if(state.units.length===0){ toast("先にユニットを登録してください"); showPanel("units"); return; }
+  askConfirm("手動配置モードを始めます。現在の生成結果は破棄し、これまでに📌固定したコマだけを置いた状態から始めます（未固定のコマは待機エリアに入ります）。よろしいですか？",()=>{
+    const occ=occFromPins();
+    lastResult={occ, unplaced:[], staged:[], pinIssues:[], flexIssues:[], manual:true};
+    lastResult.flexIssues=reassignFlex(occ); // 固定コマに かけもち を反映
+    const need=state.units.reduce((a,u)=>a+uMin(u),0);
+    document.getElementById("runNote").textContent="手動配置モード：待機エリアのコマをグリッドへ（置いたコマは📌固定）";
+    document.getElementById("fillRestBtn").style.display="";
+    renderStats(lastResult,need,occ.sessions.length);
+    renderViolations(lastResult); renderResultOutput(); renderDashboard();
+    showPanel("result"); setResultView("desk");
+    toast("待機エリアのコマをドラッグ／クリックで配置。グレーのマスにも置けます（違反として計上）");
+  });
+}
+// 手動配置を固定として残したまま、残り（待機エリア）を自動配置
+function fillRest(){ run(); toast("固定コマを尊重して残りを自動配置しました"); }
+
+/* ---------- 部分自動配置: 選んだユニット（や講師グループ）だけ先に自動で置く ---------- */
+// 手動盤面（📌固定のみ）をベースに、指定ユニットの残りコマを自動配置→配置分は📌固定化
+function autoPlaceUnits(unitIds){
+  if(!unitIds||!unitIds.length){ toast("ユニットが選択されていません"); return; }
+  const doIt=()=>{
+    if(!lastResult||!lastResult.manual){
+      lastResult={occ:occFromPins(), unplaced:[], staged:[], pinIssues:[], flexIssues:[], manual:true};
+    }
+    const occ=lastResult.occ; const timeline=buildTimeline();
+    const targets=state.units.filter(u=>unitIds.includes(u.id));
+    // 難しい順（候補が少ない順）
+    const order=targets.map(u=>{
+      let feas=0; for(const sl of timeline){ const sk=sl.w+"_"+sl.d+"_"+sl.k;
+        let ok=teacherAvailable(u.teacherId,sk); if(ok) for(const m of u.members){ if(!studentCanAttend(m,sk)){ok=false;break;} }
+        if(ok && !(sl.koma.forbidMS && unitHasLateNG(u))) feas++; }
+      return {u,score:feas - u.members.length*3 - uMin(u)*2};
+    }).sort((a,b)=>a.score-b.score);
+    const failed=[];
+    for(const {u} of order){
+      const already=occ.sessions.filter(s=>s.unitId===u.id).length;
+      const rest=Math.max(0,uMin(u)-already);
+      for(let n=0;n<rest;n++){
+        const cands=timeline.filter(sl=>canPlace(u,sl,occ));
+        if(!cands.length){ failed.push(`${u.subject}（あと${rest-n}コマ）`); break; }
+        let bestCost=Infinity,ties=[];
+        for(const sl of cands){ applyPlace(u,sl,occ); const c=softCost(occ); removeLast(occ);
+          if(c<bestCost-1e-9){bestCost=c;ties=[sl];} else if(c<=bestCost+1e-9) ties.push(sl); }
+        applyPlace(u, ties[Math.floor(Math.random()*ties.length)], occ);
+      }
+    }
+    // 局所探索は未固定（=今回置いた分）だけ動く
+    localSearch(occ,timeline,600);
+    // 今回の配置を📌固定化（手動配置と同じ扱い。以降の自動配置でも動かない）
+    occ.sessions.forEach(s=>{ if(!s.pinned && unitIds.includes(s.unitId)){ s.pinned=true;
+      const u=state.units.find(x=>x.id===s.unitId); (u.pins=u.pins||{})[s.slot.w+"_"+s.slot.d+"_"+s.slot.k]=true; } });
+    save();
+    afterManualEdit(); showPanel("result");
+    if(failed.length) toast("置ききれず: "+failed.join("・")); else toast("選択ユニットを自動配置しました（📌固定扱い）");
+  };
+  if(!lastResult||!lastResult.manual)
+    askConfirm("部分自動配置は手動配置モードの盤面で行います。現在の生成結果は破棄し、📌固定コマだけの状態から始めます。よろしいですか？",doIt);
+  else doIt();
+}
+// 指定ユニットの配置（と📌固定）をまとめて解除して待機エリアへ戻す
+function clearUnitsPlacement(unitIds){
+  if(!unitIds||!unitIds.length){ toast("ユニットが選択されていません"); return; }
+  const names=state.units.filter(u=>unitIds.includes(u.id)).map(u=>u.subject).join("・");
+  askConfirm(`「${names}」の配置と📌固定をすべて解除します。よろしいですか？`,()=>{
+    state.units.forEach(u=>{ if(unitIds.includes(u.id)) u.pins={}; });
+    if(lastResult&&lastResult.occ){
+      const occ=lastResult.occ;
+      for(let i=occ.sessions.length-1;i>=0;i--){ if(unitIds.includes(occ.sessions[i].unitId)) removePlace(i,occ); }
+      if(lastResult.staged) lastResult.staged=lastResult.staged.filter(x=>!unitIds.includes(x.unitId));
+      if(lastResult.unplaced) lastResult.unplaced=lastResult.unplaced.filter(x=>!unitIds.includes(x.unitId));
+      afterManualEdit();
+    }
+    save(); renderUnits(); toast("配置を解除しました");
+  });
+}
+function autoPlaceSelected(){ autoPlaceUnits([...unitSel]); }
+function clearSelectedPlacement(){ clearUnitsPlacement([...unitSel]); }
+// 延べ人数 = 各コマの受講人数（固定メンバー＋かけもち）の合計
+function attendCount(sessions){ return sessions.reduce((a,s)=>{ const u=state.units.find(x=>x.id===s.unitId);
+  return a+(u?u.members.length:0)+((s.extra&&s.extra.length)||0); },0); }
+function renderStats(res,totalNeed,placed){
+  const unplacedKoma=res.unplaced.reduce((a,x)=>a+x.remaining,0)+((res.staged&&res.staged.length)||0);
+  const extra=Math.max(0,placed-totalNeed);
+  const cost=Math.round(softCost(res.occ)*10)/10;
+  const attend=attendCount(res.occ.sessions);
+  const el=document.getElementById("stats");
+  el.innerHTML=`
+    <div class="stat"><b>${placed}</b><span>総コマ数 / 必要 ${totalNeed}</span></div>
+    <div class="stat"><b>${attend}</b><span>延べ人数（受講人数の合計）</span></div>
+    <div class="stat"><b style="color:${unplacedKoma?'var(--bad)':'var(--ok)'}">${unplacedKoma}</b><span>未配置（必要分）</span></div>
+    <div class="stat"><b>${extra}</b><span>追加配置（最大回数まで）</span></div>
+    <div class="stat"><b>${cost}</b><span>ソフト違反スコア（低いほど良）</span></div>`;
+}
+// 現在の配置から、条件違反（主に手動強行で発生）を列挙
+function scanConflicts(occ){
+  const out=[]; const stuSlot={}, unitDay={};
+  const wk=(s)=>`第${s.slot.w+1}週${DOW[s.slot.d]}曜 ${s.slot.koma.label}`;
+  // 教室数（最大同時授業数）オーバー
+  const mc=maxConcurrent();
+  for(const key in occ.cells){ const n=occ.cells[key].units.length;
+    if(n>mc){ const [w,d,k]=key.split("_").map(Number); const km=state.komas.find(x=>x.id===k);
+      out.push(`第${w+1}週${DOW[d]}曜 ${km?km.label:k}：同時に ${n} 授業（教室数 ${mc} を超過）。`); } }
+  occ.sessions.forEach(s=>{ const u=state.units.find(x=>x.id===s.unitId); if(!u) return;
+    const key=s.slot.w+"_"+s.slot.d+"_"+s.slot.k;
+    // 講師の出勤可否
+    if(!teacherAvailable(u.teacherId,key)){ const tc=teacherById(u.teacherId);
+      out.push(`${tc?tc.name:"講師"} の出勤できない時間に「${u.subject}」を配置（${wk(s)}）。`); }
+    // 遅い時間NGの禁止コマ
+    if(s.slot.koma.forbidMS && unitHasLateNG(u)) out.push(`「${u.subject}」を、遅い時間NGの生徒がいるのに禁止コマ（${wk(s)}）に配置。`);
+    // 同ユニット同日
+    const udk=u.id+"|"+s.slot.dayId; if(unitDay[udk]) out.push(`「${u.subject}」が同じ日に複数回配置されています（${wk(s)}）。`); unitDay[udk]=1;
+    // 生徒の登校可否・同時刻重複
+    for(const m of [...u.members,...(s.extra||[])]){
+      if(!studentCanAttend(m,key)){ const st=studentById(m); out.push(`${st?st.name:m} の登校できない時間に「${u.subject}」を配置（${wk(s)}）。`); }
+      const sk=m+"|"+key; if(stuSlot[sk]){ const st=studentById(m); out.push(`${st?st.name:m} が同じ時間に2つの授業に入っています（${wk(s)}）。`); } stuSlot[sk]=1;
+    }
+  });
+  return out;
+}
+function renderViolations(res){
+  const card=document.getElementById("violCard"); const list=document.getElementById("violList");
+  const items=[];
+  (res.pinIssues||[]).forEach(p=>{ items.push({hard:true,t:"固定コマの問題",msg:p.msg}); });
+  // 手動退避分
+  if(res.staged&&res.staged.length){
+    const byU={}; res.staged.forEach(x=>byU[x.unitId]=(byU[x.unitId]||0)+1);
+    for(const uid in byU){ const u=state.units.find(x=>x.id===uid);
+      items.push({hard:true,t:"待機エリア",msg:`「${u?u.subject:uid}」を ${byU[uid]}コマ 手動で退避中です。待機エリアからグリッドに戻してください。`}); }
+  }
+  (res.flexIssues||[]).forEach(p=>{ items.push({hard:true,t:"かけもち受講の不足",msg:p.msg}); });
+  // 手動配置での制約破りをスキャン（登校不可・出勤不可・同時刻重複・同日重複・遅時間NG禁止）
+  scanConflicts(res.occ).forEach(m=>items.push({hard:true,t:"手動配置の問題",msg:m}));
+  res.unplaced.forEach(x=>{ const u=state.units.find(v=>v.id===x.unitId);
+    items.push({hard:true,t:"未配置",msg:`「${u.subject}／${teacherById(u.teacherId).name}」が最低回数（${uMin(u)}）まで あと ${x.remaining}コマ 置けませんでした。メンバーの登校可能時間が重なる枠が不足しています。`}); });
+
+  // ソフト違反の内訳
+  const komaOrder={}; state.komas.forEach((k,i)=>komaOrder[k.id]=i);
+  const perStudent={},perTeacherDay={};
+  res.occ.sessions.forEach(s=>{ const u=state.units.find(x=>x.id===s.unitId);
+    [...u.members,...(s.extra||[])].forEach(m=>{const key=m+"|"+s.slot.w+"|"+s.slot.d;(perStudent[key]=perStudent[key]||[]).push(komaOrder[s.slot.k]);});
+    const tk=u.teacherId+"|"+s.slot.w+"|"+s.slot.d;(perTeacherDay[tk]=perTeacherDay[tk]||[]).push(komaOrder[s.slot.k]);
+  });
+  let stuGap=0,teaGap=0,msAvoid=0,thinDays=0,triCnt=0;
+  const SWm=studentWeights();
+  const wNote=(sid)=>{ const p=SWm[sid]; return p&&p.w<0.7?`（登校可能の余裕が少ないため重み${p.w.toFixed(2)}で計算）`:""; };
+  for(const key in perStudent){ const [sid,w,d]=key.split("|"); const st=studentById(sid); if(st&&st.flexGap)continue;
+    const arr=perStudent[key].sort((a,b)=>a-b); const g=(arr[arr.length-1]-arr[0]+1)-arr.length;
+    if(g>0){stuGap+=g; items.push({t:"生徒の空きコマ",msg:`${st?st.name:sid} ・第${+w+1}週${DOW[d]}曜：間に ${g} コマの空き。${wNote(sid)}`});}
+  }
+  // △（来られる/出勤できるが避けたい）への配置
+  res.occ.sessions.forEach(s=>{ const u=state.units.find(x=>x.id===s.unitId);
+    const key=s.slot.w+"_"+s.slot.d+"_"+s.slot.k;
+    for(const m of [...u.members,...(s.extra||[])]){
+      if(studentPrefersNot(m,key)){ triCnt++;
+        const st=studentById(m);
+        items.push({t:"△の時間に配置",msg:`${st?st.name:m} ・第${s.slot.w+1}週${DOW[s.slot.d]}曜 ${s.slot.koma.label}：本人が「できれば入れたくない（△）」とした時間に「${u.subject}」を配置。${wNote(m)}`});
+      }
+    }
+    if(teacherPrefersNot(u.teacherId,key)){ triCnt++;
+      const tc=teacherById(u.teacherId);
+      items.push({t:"△の時間に配置（講師）",msg:`${tc?tc.name:"講師"} ・第${s.slot.w+1}週${DOW[s.slot.d]}曜 ${s.slot.koma.label}：出勤△の時間に「${u.subject}」を配置。`});
+    }
+  });
+  for(const key in perTeacherDay){ const [tid,w,d]=key.split("|"); const tc=teacherById(tid); if(!tc||!tc.part)continue;
+    const arr=perTeacherDay[key].sort((a,b)=>a-b); const g=(arr[arr.length-1]-arr[0]+1)-arr.length;
+    if(g>0){teaGap+=g; items.push({t:"バイト講師の空きコマ",msg:`${tc.name}（バイト）・第${+w+1}週${DOW[d]}曜：間に ${g} コマの空き（時給の無駄）。`});}
+    if(arr.length===1){thinDays++; items.push({t:"バイト1コマ出勤",msg:`${tc.name}（バイト）・第${+w+1}週${DOW[d]}曜：この日は 1コマだけの出勤です（交通費の効率が悪い）。他の日にまとめられないか確認を。`});}
+  }
+  res.occ.sessions.forEach(s=>{ const u=state.units.find(x=>x.id===s.unitId);
+    if(s.slot.koma.avoidMS && unitHasLateNG(u)){ msAvoid++;
+      items.push({t:"遅い時間NG",msg:`「${u.subject}」を第${s.slot.w+1}週${DOW[s.slot.d]}曜 ${s.slot.koma.label}(${s.slot.koma.time}) に配置（遅い時間NGの生徒がいるため避けたい時間）。`}); }
+  });
+
+  card.style.display="block";
+  if(items.length===0){ list.innerHTML='<div class="viol" style="border-color:var(--ok);background:#eefaf3">問題は見つかりませんでした 🎉</div>'; return; }
+  // 要約
+  const summary=`<div style="margin-bottom:10px">
+     <span class="tag ${res.unplaced.length?'':'reg'}">未配置 ${res.unplaced.reduce((a,x)=>a+x.remaining,0)}</span>
+     <span class="tag">生徒の空き ${stuGap}</span>
+     <span class="tag">バイト講師の空き ${teaGap}</span>
+     <span class="tag">バイト1コマ出勤日 ${thinDays}</span>
+     <span class="tag">△配置 ${triCnt}</span>
+     <span class="tag">遅い時間NG違反 ${msAvoid}</span></div>`;
+  list.innerHTML=summary+items.map(i=>`<div class="viol ${i.hard?'hard':''}"><span class="vt">${i.t}</span><br>${i.msg}</div>`).join("");
+}
+function renderWeeks(res){
+  const out=document.getElementById("weeksOut"); out.innerHTML="";
+  const dows=state.openDows.slice().sort((a,b)=>a-b); // 日曜始まり
+  // sessions を (w,d,k) で引けるように
+  const map={};
+  res.occ.sessions.forEach(s=>{ const key=s.slot.w+"_"+s.slot.d+"_"+s.slot.k; (map[key]=map[key]||[]).push(s); });
+  for(let w=0;w<state.weeks;w++){
+    const card=document.createElement("div"); card.className="card";
+    const range=weekRange(w,dows);
+    let html=`<h2>${weekTitle(w)} <span class="muted" style="font-weight:400;font-size:13px">${range}</span></h2><div class="grid-scroll"><table class="wk-table"><tr><th class="koma">コマ＼曜日</th>`;
+    dows.forEach(d=>html+=`<th>${DOW[d]}<br><span class="muted" style="font-weight:400">${dateSub(w,d)}</span></th>`);
+    html+="</tr>";
+    for(const k of state.komas){
+      const flag = k.forbidMS?'<span class="koma-late">◆</span>':(k.avoidMS?'<span class="koma-avoid">▲</span>':'');
+      html+=`<tr><td class="koma">${k.label}<br><span class="muted" style="font-weight:400">${k.time}</span> ${flag}</td>`;
+      for(const d of dows){
+        const key=w+"_"+d+"_"+k.id; const arr=map[key]||[];
+        html+=`<td data-cell="${key}">`;
+        arr.forEach(s=>{ const u=state.units.find(x=>x.id===s.unitId); const tc=teacherById(u.teacherId);
+          let mem=u.members.map(m=>{const st=studentById(m);return st?st.name:"";}).join("・");
+          const ex=(s.extra||[]).map(m=>{const st=studentById(m);return st?"＋"+st.name:"";}).filter(Boolean).join("・");
+          if(ex) mem+=(mem?"・":"")+ex;
+          const pin=(u.pins&&u.pins[key])?"📌":"";
+          html+=`<div class="sess" draggable="true" data-sess="${u.id}|${key}">${pin}<span class="subj">${u.subject}</span> <span class="muted">${tc.name}${tc.part?'(バ)':''}</span><br><span class="mem">${mem}</span></div>`;
+        });
+        html+="</td>";
+      }
+      html+="</tr>";
+    }
+    html+="</table></div>";
+    card.innerHTML=html; out.appendChild(card);
+  }
+}
+
+/* ---------- 表示形式切替（ユニット別／デスク別／個人別） ---------- */
+let resultView="units";
+const TEACHER_COLORS=[["#e8f0ff","#2f6df6"],["#e3f6ee","#12805c"],["#fff4e0","#c47b00"],["#f3e8ff","#8b4fd6"],["#ffe8ec","#d1447e"],["#e0f4f4","#0e8a8a"],["#f0f4e0","#6a8a0e"],["#ffeede","#d1662f"]];
+function teacherColor(tid){ const i=state.teachers.findIndex(t=>t.id===tid); return TEACHER_COLORS[(i<0?0:i)%TEACHER_COLORS.length]; }
+function setResultView(v){ resultView=v; renderResultOutput(); }
+function renderResultOutput(){
+  if(!lastResult) return;
+  document.getElementById("viewBar").style.display="block";
+  if(resultView==="fit") resultView="desk"; // 旧ビューは統合済み
+  ["units","desk","person"].forEach(v=>{ const b=document.getElementById("vw-"+v); if(b) b.classList.toggle("primary",v===resultView); });
+  const sel=document.getElementById("personSel");
+  sel.style.display=resultView==="person"?"":"none";
+  if(resultView==="person"){ fillPersonSel(); renderPersonView(lastResult); }
+  else if(resultView==="desk") renderFitView(lastResult);
+  else renderWeeks(lastResult);
+  renderTray();
+}
+function fillPersonSel(){
+  const sel=document.getElementById("personSel"); const cur=sel.value;
+  sel.innerHTML=`<optgroup label="講師">${state.teachers.map(t=>`<option value="t:${t.id}">${t.name}</option>`).join("")}</optgroup>
+    <optgroup label="生徒">${state.students.map(s=>`<option value="s:${s.id}">${s.name}（${s.grade}）</option>`).join("")}</optgroup>
+    <optgroup label="一括"><option value="all:s">生徒全員（連続表示）</option><option value="all:t">講師全員（連続表示）</option></optgroup>`;
+  if(cur&&[...sel.options].some(o=>o.value===cur)) sel.value=cur;
+}
+function sessMemberNames(u,s){
+  let mem=u.members.map(m=>{const st=studentById(m);return st?st.name:"";}).filter(Boolean).join("・");
+  const ex=(s.extra||[]).map(m=>{const st=studentById(m);return st?"＋"+st.name:"";}).filter(Boolean).join("・");
+  if(ex) mem+=(mem?"・":"")+ex;
+  return mem;
+}
+
+// 全体時間割: 行=コマ、列=曜日×デスク（講師）。どの机で何の授業かが一目で分かる
+// 全体時間割（1週間一望・編集可）: デスク×曜日を超コンパクト化し、画面全幅に自動フィット。ドラッグ編集対応
+function shortCode(subject){ return subject.replace(/^\d+/,""); } // 通し番号を落とす
+function renderFitView(res){
+  const out=document.getElementById("weeksOut"); out.innerHTML="";
+  const dows=state.openDows.slice().sort((a,b)=>a-b);
+  const T=state.teachers;
+  const map={};
+  res.occ.sessions.forEach(s=>{ const u=state.units.find(x=>x.id===s.unitId);
+    map[s.slot.w+"_"+s.slot.d+"_"+s.slot.k+"_"+u.teacherId]=s; });
+  for(let w=0;w<state.weeks;w++){
+    const card=document.createElement("div"); card.className="card";
+    const range=weekRange(w,dows);
+    const head=document.createElement("h2");
+    head.innerHTML=`${weekTitle(w)} <span class="muted" style="font-weight:400;font-size:13px">${range}</span>`;
+    card.appendChild(head);
+    const wrap=document.createElement("div"); wrap.className="fit-wrap";
+    let html=`<table class="fit-table"><tr><th rowspan="2" class="koma">コマ</th>`;
+    dows.forEach(d=>html+=`<th colspan="${T.length}" class="daysep">${DOW[d]}${dateSub(w,d)}</th>`);
+    html+="</tr><tr>";
+    dows.forEach(()=>T.forEach((t,i)=>{ const [,bd]=teacherColor(t.id);
+      html+=`<th class="${i===0?'daysep':''}" style="color:${bd}">${t.name.slice(0,2)}</th>`; }));
+    html+="</tr>";
+    for(const k of state.komas){
+      html+=`<tr><td class="koma">${k.label}</td>`;
+      dows.forEach(d=>T.forEach((t,i)=>{
+        const key=w+"_"+d+"_"+k.id;
+        const s=map[key+"_"+t.id]; let cell="";
+        if(s){ const u=state.units.find(x=>x.id===s.unitId); const [bg,bd]=teacherColor(t.id);
+          const chars=[...u.members,...(s.extra||[])].map(m=>{const st=studentById(m);return st?st.name[0]:"";}).join("");
+          const pin=(u.pins&&u.pins[key])?"📌":"";
+          cell=`<div class="fit-sess" draggable="true" data-sess="${s.unitId}|${key}" style="background:${bg};border-left:2px solid ${bd}"><b>${pin}${shortCode(u.subject)}</b><br>${chars}</div>`; }
+        html+=`<td class="${i===0?'daysep':''}" data-cell="${key}" data-tid="${t.id}">${cell}</td>`;
+      }));
+      html+="</tr>";
+    }
+    html+="</table>";
+    wrap.innerHTML=html;
+    card.appendChild(wrap); out.appendChild(card);
+  }
+  fitScale();                       // DOM挿入直後に同期で縮小
+  requestAnimationFrame(fitScale);  // フォント読込等での再レイアウトに備えてもう一度
+}
+function fitScale(){
+  document.querySelectorAll("#weeksOut .fit-wrap").forEach(wrap=>{
+    const table=wrap.firstElementChild; if(!table) return;
+    wrap.style.transform=""; wrap.style.height=""; wrap.style.width="";
+    const avail=wrap.clientWidth-2;      // カードのパディングを除いた実幅
+    const natural=table.offsetWidth;
+    if(!natural||!avail) return;
+    // 余白を使い切る: 縮小も拡大もして常に幅ぴったりに（拡大は2倍まで）
+    const scale=Math.min(2, avail/natural);
+    if(Math.abs(scale-1)>0.01){
+      wrap.style.width=natural+"px";
+      wrap.style.transform=`scale(${scale})`;
+      wrap.style.height=(table.offsetHeight*scale)+"px";
+    }
+  });
+}
+window.addEventListener("resize",()=>{ if(resultView==="desk"&&lastResult) fitScale(); });
+
+// 個人時間割: 講師・生徒それぞれの「いつ何の授業か」
+function renderPersonView(res){
+  const out=document.getElementById("weeksOut"); out.innerHTML="";
+  const sel=document.getElementById("personSel");
+  if(!sel.value) fillPersonSel();
+  const v=sel.value; if(!v){ out.innerHTML='<div class="card empty">講師・生徒が登録されていません</div>'; return; }
+  let persons;
+  if(v==="all:s") persons=state.students.map(s=>({kind:"s",id:s.id}));
+  else if(v==="all:t") persons=state.teachers.map(t=>({kind:"t",id:t.id}));
+  else { const p=v.split(":"); persons=[{kind:p[0],id:p[1]}]; }
+  persons.forEach(p=>{ const c=personCard(res,p); if(c) out.appendChild(c); });
+}
+function personCard(res,p){
+  const isT=p.kind==="t";
+  const person=isT?teacherById(p.id):studentById(p.id);
+  if(!person) return null;
+  const dows=state.openDows.slice().sort((a,b)=>a-b);
+  const map={}; let total=0; const perWeek=Array(state.weeks).fill(0);
+  res.occ.sessions.forEach(s=>{ const u=state.units.find(x=>x.id===s.unitId);
+    const mine=isT? u.teacherId===p.id : (u.members.includes(p.id)||(s.extra||[]).includes(p.id));
+    if(mine){ map[s.slot.w+"_"+s.slot.d+"_"+s.slot.k]=s; total++; perWeek[s.slot.w]++; } });
+  const canGo=(key)=> isT ? teacherAvailable(p.id,key) : studentCanAttend(p.id,key);
+  const card=document.createElement("div"); card.className="card";
+  let html=`<h2>${person.name}${isT?"":"（"+person.grade+"）"} の時間割 <span class="muted" style="font-weight:400;font-size:13px">全 ${total} コマ${isT&&person.part?"・バイト":""}　<span style="display:inline-block;width:14px;height:11px;vertical-align:middle;border:1px solid var(--line);background:repeating-linear-gradient(45deg,#eef0f3,#eef0f3 6px,#e4e7ec 6px,#e4e7ec 12px)"></span> ＝ ${isT?"出勤":"登校"}できない時間</span></h2>`;
+  if(!isT&&!person.submitted) html+=`<p class="hint" style="margin:0 0 6px">この生徒は時間割<b>未提出</b>のため全日程出席可能として扱っています（グレーはありません）。</p>`;
+  for(let w=0;w<state.weeks;w++){
+    html+=`<h3 style="margin:12px 0 4px;font-size:13px">${weekTitle(w)} <span class="muted" style="font-weight:400">${weekRange(w,dows)}</span></h3>`;
+    if(perWeek[w]===0){ html+='<div class="muted" style="font-size:12px;margin-bottom:6px">この週の授業はありません</div>'; continue; }
+    html+=`<div class="grid-scroll"><table class="wk-table"><tr><th class="koma">コマ</th>${dows.map(d=>`<th>${DOW[d]}<br><span class="muted" style="font-weight:400">${dateSub(w,d)}</span></th>`).join("")}</tr>`;
+    for(const k of state.komas){
+      html+=`<tr><td class="koma">${k.label}<br><span class="muted" style="font-weight:400">${k.time}</span></td>`;
+      for(const d of dows){
+        const key=w+"_"+d+"_"+k.id;
+        const s=map[key];
+        if(s){ const u=state.units.find(x=>x.id===s.unitId); const tc=teacherById(u.teacherId);
+          const [bg,bd]=teacherColor(u.teacherId);
+          const isExtra=!isT&&(s.extra||[]).includes(p.id);
+          const detail=isT? sessMemberNames(u,s) : `${tc?tc.name:"?"}`;
+          html+=`<td><div class="sess-box" style="background:${bg};border-left:3px solid ${bd}"><b>${u.subject}</b>${isExtra?' <span class="pill">かけもち</span>':""}<br><span class="mem">${detail}</span></div></td>`;
+        } else html+=`<td class="${canGo(key)?"":"na-cell"}"></td>`;
+      }
+      html+="</tr>";
+    }
+    html+="</table></div>";
+  }
+  card.innerHTML=html; return card;
+}
+
+/* ---------- 時間割の直接編集（クリック＝ハイライト／ドラッグ＝移動） ---------- */
+let hlSess=null, dragInfo=null, dragValid=null, dragPlaceable=null;
+function findSessIdx(unitId,key){
+  return lastResult.occ.sessions.findIndex(s=>s.unitId===unitId && (s.slot.w+"_"+s.slot.d+"_"+s.slot.k)===key);
+}
+function clearHighlight(){ hlSess=null; document.querySelectorAll('#weeksOut .hl-unit,#weeksOut .hl-member').forEach(el=>el.classList.remove("hl-unit","hl-member")); }
+function toggleHighlight(sessKey){
+  if(hlSess===sessKey){ clearHighlight(); return; }
+  clearHighlight(); hlSess=sessKey;
+  const [unitId,key]=sessKey.split("|");
+  const u=state.units.find(x=>x.id===unitId); if(!u||!lastResult) return;
+  const idx=findSessIdx(unitId,key);
+  const mset=new Set([...u.members, ...((idx>=0&&lastResult.occ.sessions[idx].extra)||[])]);
+  document.querySelectorAll('#weeksOut [data-sess]').forEach(el=>{
+    const [uid2,key2]=el.dataset.sess.split("|");
+    if(uid2===unitId){ el.classList.add("hl-unit"); return; }
+    const u2=state.units.find(x=>x.id===uid2); if(!u2) return;
+    const i2=findSessIdx(uid2,key2);
+    const m2=[...u2.members, ...((i2>=0&&lastResult.occ.sessions[i2].extra)||[])];
+    if(m2.some(m=>mset.has(m))) el.classList.add("hl-member");
+  });
+}
+// ドラッグ開始: 置ける場所を計算してマスを色分け
+function beginDrag(el){
+  const [unitId,fromKey]=el.dataset.sess.split("|");
+  const occ=lastResult.occ; const idx=findSessIdx(unitId,fromKey);
+  if(idx<0) return false;
+  const sess=occ.sessions[idx];
+  const keep={pinned:!!sess.pinned, extra:(sess.extra||[]).slice()};
+  const u=state.units.find(x=>x.id===unitId);
+  removePlace(idx,occ);
+  dragValid=new Set();
+  for(const sl of buildTimeline()) if(canPlace(u,sl,occ)) dragValid.add(sl.w+"_"+sl.d+"_"+sl.k);
+  const [fw,fd,fk]=fromKey.split("_").map(Number);
+  applyPlace(u,slotOf(fw,fd,fk),occ);
+  Object.assign(occ.sessions[occ.sessions.length-1], keep.pinned?{pinned:true}:{}, keep.extra.length?{extra:keep.extra}:{});
+  dragValid.add(fromKey); // 元の位置は常にOK（＝キャンセル）
+  dragPlaceable=lastResult.manual?computePlaceable(unitId,fromKey):null;
+  dragInfo={unitId,fromKey,keep,teacherId:u.teacherId};
+  paintTargets(dragValid,u.teacherId,dragPlaceable);
+  el.classList.add("dragging");
+  return true;
+}
+function endDragPaint(){
+  document.querySelectorAll('#weeksOut .drop-ok,#weeksOut .drop-na').forEach(td=>td.classList.remove("drop-ok","drop-na"));
+  document.querySelectorAll('#weeksOut .dragging').forEach(el=>el.classList.remove("dragging"));
+}
+// 実際の移動（かけもち生徒は移動先で不成立なら外して警告）
+function moveSession(unitId,fromKey,toKey,keep){
+  const occ=lastResult.occ; const u=state.units.find(x=>x.id===unitId);
+  if(fromKey===toKey) return true;
+  const idx=findSessIdx(unitId,fromKey); if(idx<0) return false;
+  removePlace(idx,occ);
+  const [w,d,k]=toKey.split("_").map(Number); const slot=slotOf(w,d,k);
+  const restore=()=>{ const [fw,fd,fk]=fromKey.split("_").map(Number);
+    applyPlace(u,slotOf(fw,fd,fk),occ);
+    Object.assign(occ.sessions[occ.sessions.length-1], keep.pinned?{pinned:true}:{}, keep.extra.length?{extra:keep.extra}:{}); };
+  if(!deskFree(occ,toKey,u.teacherId)){ restore(); toast("その机は同じ時間に埋まっています"); return false; }
+  if(!slotHasRoom(occ,toKey)){ restore(); toast(`その時間は教室数（${maxConcurrent()}）で埋まっています`); return false; }
+  if(!lastResult.manual && !canPlace(u,slot,occ)){ restore(); toast("そこには置けません（条件を満たしません）"); return false; }
+  applyPlace(u,slot,occ);
+  const ns=occ.sessions[occ.sessions.length-1];
+  if(lastResult.manual){ ns.pinned=true; (u.pins=u.pins||{}); delete u.pins[fromKey]; u.pins[toKey]=true; save(); }
+  else if(keep.pinned){ ns.pinned=true; if(u.pins&&u.pins[fromKey]){ delete u.pins[fromKey]; u.pins[toKey]=true; save(); toast("📌固定位置も移動しました"); } }
+  // かけもち生徒の検証: 登校可能か・同時刻に他の授業がないか
+  const kept=[],dropped=[];
+  for(const sid of keep.extra){
+    const okAvail=studentCanAttend(sid,toKey);
+    const busy=occ.sessions.some(s2=>{ if(s2===ns) return false;
+      if((s2.slot.w+"_"+s2.slot.d+"_"+s2.slot.k)!==toKey) return false;
+      const u2=state.units.find(x=>x.id===s2.unitId);
+      return u2.members.includes(sid)||(s2.extra||[]).includes(sid); });
+    if(okAvail&&!busy) kept.push(sid); else dropped.push(sid);
+  }
+  if(kept.length) ns.extra=kept;
+  if(dropped.length){
+    const names=dropped.map(id=>{const st=studentById(id);return st?st.name:id;}).join("・");
+    (lastResult.flexIssues=lastResult.flexIssues||[]).push({msg:`手動移動により、${names} のかけもち受講がこのコマから外れました（移動先に来られない・または同時刻に別授業のため）。受講回数が不足している可能性があります。`});
+    toast(`かけもちの ${names} は移動先に入れないため外しました（チェック結果参照）`);
+  }
+  return true;
+}
+/* ---------- 待機エリア（未配置・退避コマ置き場） ---------- */
+// lastResult.staged = [{unitId, keep:{pinned,extra}}] 手動退避分。エンジン未配置は lastResult.unplaced。
+function trayCounts(){
+  if(lastResult.manual){ // 手動配置モード: 残り = 目標コマ数 − 配置済み(=固定)数
+    const c={}; state.units.forEach(u=>{ const rem=uMin(u)-Object.keys(u.pins||{}).length; if(rem>0) c[u.id]=rem; }); return c;
+  }
+  const c={};
+  (lastResult.unplaced||[]).forEach(x=>{ c[x.unitId]=(c[x.unitId]||0)+x.remaining; });
+  (lastResult.staged||[]).forEach(x=>{ c[x.unitId]=(c[x.unitId]||0)+1; });
+  return c;
+}
+// 机（講師デスク）がそのコマで空いているか（真に置けない＝物理的に不可）
+function deskFree(occ,key,teacherId){ return !(occ.cells[key]&&occ.cells[key].teachers.has(teacherId)); }
+function renderTray(){
+  const tray=document.getElementById("stageTray");
+  const fb=document.getElementById("fillRestBtn"); if(fb) fb.style.display=(lastResult&&lastResult.manual)?"":"none";
+  if(!lastResult||resultView==="person"){ tray.style.display="none"; return; }
+  tray.style.display="flex";
+  const c=trayCounts();
+  const chips=Object.entries(c).map(([uid,n])=>{
+    const u=state.units.find(x=>x.id===uid); if(!u) return "";
+    const [bg,bd]=teacherColor(u.teacherId);
+    const sel=selInfo&&selInfo.type==="tray"&&selInfo.unitId===uid?" sel":"";
+    return `<span class="stage-chip${sel}" draggable="true" data-tray-unit="${uid}" style="background:${bg};border-left:3px solid ${bd}">${shortCode(u.subject)} <span class="cnt">×${n}</span></span>`;
+  }).join("");
+  tray.innerHTML=`<b style="font-size:12px">🧺 待機エリア</b>`+
+    (chips||`<span class="muted" style="font-size:12px">未配置・退避コマはありません</span>`)+
+    `<span class="muted" style="font-size:11px;margin-left:auto">チップをクリック/ドラッグ→マスへ配置｜グリッドのコマを選択してここをクリック（またはドラッグ）で退避</span>`;
+}
+// トレイ→グリッドへ1コマ配置（手動退避分を優先して取り出す）。force=true で条件違反でも強行（手動モード）
+function placeFromTray(unitId,toKey,force){
+  const occ=lastResult.occ; const u=state.units.find(x=>x.id===unitId);
+  const [w,d,k]=toKey.split("_").map(Number); const slot=slotOf(w,d,k);
+  if(!deskFree(occ,toKey,u.teacherId)){ toast("その机は同じ時間に別の授業で埋まっています"); return false; }
+  if(!slotHasRoom(occ,toKey)){ toast(`その時間はすでに ${maxConcurrent()} 授業（教室数）で埋まっています`); return false; }
+  if(lastResult.manual){ // 手動配置: 固定コマとして置く（条件違反でも強行可）
+    applyPlace(u,slot,occ); const ns=occ.sessions[occ.sessions.length-1]; ns.pinned=true;
+    (u.pins=u.pins||{})[toKey]=true; save();
+    return true;
+  }
+  if(!force && !canPlace(u,slot,occ)){ toast("そこには置けません（条件を満たしません）"); return false; }
+  let keep={pinned:false,extra:[]};
+  const si=(lastResult.staged||[]).findIndex(x=>x.unitId===unitId);
+  if(si>=0){ keep=lastResult.staged[si].keep||keep; lastResult.staged.splice(si,1); }
+  else{
+    const ue=(lastResult.unplaced||[]).find(x=>x.unitId===unitId&&x.remaining>0);
+    if(!ue){ toast("待機分がありません"); return false; }
+    ue.remaining--; if(ue.remaining<=0) lastResult.unplaced=lastResult.unplaced.filter(x=>x!==ue);
+  }
+  applyPlace(u,slot,occ);
+  const ns=occ.sessions[occ.sessions.length-1];
+  if(keep.extra&&keep.extra.length){ // かけもちは配置先で成立する分だけ復帰
+    const kept=keep.extra.filter(sid=>studentCanAttend(sid,toKey));
+    if(kept.length) ns.extra=kept;
+    if(kept.length<keep.extra.length) toast("かけもちの一部は配置先に入れないため外れました");
+  }
+  return true;
+}
+// グリッド→トレイへ退避（📌固定は解除される）
+function evacuateSession(unitId,fromKey){
+  const idx=findSessIdx(unitId,fromKey); if(idx<0) return false;
+  const u=state.units.find(x=>x.id===unitId);
+  if(lastResult.manual){ // 手動モード: 固定を外してトレイへ戻す（残りはpinsから自動計算）
+    if(u.pins&&u.pins[fromKey]){ delete u.pins[fromKey]; save(); }
+    removePlace(idx,lastResult.occ); return true;
+  }
+  const s=lastResult.occ.sessions[idx];
+  const keep={pinned:false, extra:(s.extra||[]).slice()};
+  if(s.pinned){ if(u.pins&&u.pins[fromKey]){ delete u.pins[fromKey]; save(); } toast("📌固定を解除して退避しました"); }
+  removePlace(idx,lastResult.occ);
+  (lastResult.staged=lastResult.staged||[]).push({unitId,keep});
+  return true;
+}
+
+/* ---------- クリック→クリック移動（選択方式。遠くのマスへはスクロールしてからクリック） ---------- */
+let selInfo=null;
+function computeValid(unitId, excludeKey){
+  const occ=lastResult.occ; const u=state.units.find(x=>x.id===unitId);
+  let keep=null;
+  if(excludeKey){ const idx=findSessIdx(unitId,excludeKey); if(idx<0) excludeKey=null;
+    else{ const s=occ.sessions[idx]; keep={pinned:!!s.pinned,extra:(s.extra||[]).slice()}; removePlace(idx,occ); } }
+  const valid=new Set();
+  for(const sl of buildTimeline()) if(canPlace(u,sl,occ)) valid.add(sl.w+"_"+sl.d+"_"+sl.k);
+  if(excludeKey){ const [w,d,k]=excludeKey.split("_").map(Number); applyPlace(u,slotOf(w,d,k),occ);
+    Object.assign(occ.sessions[occ.sessions.length-1], keep.pinned?{pinned:true}:{}, keep.extra.length?{extra:keep.extra}:{});
+    valid.add(excludeKey); }
+  return valid;
+}
+// 手動モードで「グレーだが置ける」机（デスク空き）の集合
+function computePlaceable(unitId, excludeKey){
+  const occ=lastResult.occ; const u=state.units.find(x=>x.id===unitId);
+  const set=new Set();
+  for(const sl of buildTimeline()){ const key=sl.w+"_"+sl.d+"_"+sl.k;
+    if(key===excludeKey || (deskFree(occ,key,u.teacherId) && slotHasRoom(occ,key))) set.add(key); }
+  return set;
+}
+// valid=理想(条件クリア)は青点線、placeable(手動:机空きだが条件違反)はグレーでも配置可
+function paintTargets(valid,teacherId,placeable){
+  document.querySelectorAll('#weeksOut td[data-cell]').forEach(td=>{
+    const key=td.dataset.cell; const teacherOk=!td.dataset.tid||td.dataset.tid===teacherId;
+    if(!teacherOk) return;
+    if(valid.has(key)) td.classList.add("drop-ok");
+    else if(!placeable||placeable.has(key)) td.classList.add("drop-na");
+  });
+}
+function clearSel(){
+  selInfo=null; endDragPaint(); clearHighlight();
+  document.getElementById("stageTray").classList.remove("armed");
+  document.querySelectorAll('.stage-chip.sel').forEach(el=>el.classList.remove("sel"));
+}
+function selectSess(sessKey){
+  clearSel();
+  const [unitId,fromKey]=sessKey.split("|");
+  const idx=findSessIdx(unitId,fromKey); if(idx<0) return;
+  const s=lastResult.occ.sessions[idx];
+  selInfo={type:"sess",sessKey,unitId,fromKey,keep:{pinned:!!s.pinned,extra:(s.extra||[]).slice()},
+    valid:computeValid(unitId,fromKey),
+    placeable:lastResult.manual?computePlaceable(unitId,fromKey):null,
+    teacherId:state.units.find(x=>x.id===unitId).teacherId};
+  toggleHighlight(sessKey); hlSess=sessKey;
+  paintTargets(selInfo.valid, selInfo.teacherId, selInfo.placeable);
+  document.getElementById("stageTray").classList.add("armed"); // クリックで退避可能の合図
+  const el=document.querySelector(`[data-sess="${CSS.escape(sessKey)}"]`); if(el) el.classList.add("dragging");
+}
+function selectTray(unitId){
+  clearSel();
+  selInfo={type:"tray",unitId,valid:computeValid(unitId,null),
+    placeable:lastResult.manual?computePlaceable(unitId,null):null,
+    teacherId:state.units.find(x=>x.id===unitId).teacherId};
+  paintTargets(selInfo.valid, selInfo.teacherId, selInfo.placeable);
+  renderTray(); // selクラス反映
+}
+// 選択中のユニットが、この行き先セルに置けるか（手動なら机空きでOK＝グレーも可）
+function selDroppable(sel,td){
+  const ck=td.dataset.cell; const teacherOk=!td.dataset.tid||td.dataset.tid===sel.teacherId;
+  if(!teacherOk) return false;
+  return sel.valid.has(ck) || (sel.placeable && sel.placeable.has(ck));
+}
+
+// かけもち受講を今の配置に合わせて割り当て直す（手動配置モード用）
+function reassignFlex(occ){
+  occ.sessions.forEach(s=>{ delete s.extra; });
+  return assignFlex(occ);
+}
+function afterManualEdit(){
+  if(lastResult.manual) lastResult.flexIssues=reassignFlex(lastResult.occ); // 手動で置いたコマにも かけもち を反映
+  const needMin=state.units.reduce((a,u)=>a+uMin(u),0);
+  document.getElementById("runNote").textContent="手動編集済み（★履歴に保存できます）";
+  renderStats(lastResult,needMin,lastResult.occ.sessions.length);
+  renderViolations(lastResult);
+  renderResultOutput();
+  renderDashboard();
+}
+// イベント委譲（ビューを再描画しても効く）
+(function(){
+  const wo=document.getElementById("weeksOut");
+  const tray=document.getElementById("stageTray");
+  // クリック: 選択 → 行き先クリックで移動／トレイクリックで退避
+  wo.addEventListener("click",e=>{
+    const el=e.target.closest("[data-sess]");
+    const td=e.target.closest("td[data-cell]");
+    if(el){
+      const key=el.dataset.sess;
+      if(selInfo&&selInfo.type==="sess"&&selInfo.sessKey===key){ clearSel(); return; } // 同じコマ再クリック=解除
+      selectSess(key); return;
+    }
+    if(td&&selInfo){
+      const ck=td.dataset.cell;
+      const ok=selDroppable(selInfo,td);
+      const info=selInfo; clearSel();
+      if(!ok){ return; }
+      if(info.type==="sess"){ if(moveSession(info.unitId,info.fromKey,ck,info.keep)) afterManualEdit(); }
+      else{ if(placeFromTray(info.unitId,ck,true)) afterManualEdit(); }
+      return;
+    }
+    clearSel();
+  });
+  tray.addEventListener("click",e=>{
+    const chip=e.target.closest("[data-tray-unit]");
+    if(chip){
+      const uid=chip.dataset.trayUnit;
+      if(selInfo&&selInfo.type==="tray"&&selInfo.unitId===uid){ clearSel(); renderTray(); return; }
+      selectTray(uid); return;
+    }
+    if(selInfo&&selInfo.type==="sess"){ const info=selInfo; clearSel();
+      if(evacuateSession(info.unitId,info.fromKey)) afterManualEdit(); return; }
+  });
+  document.addEventListener("keydown",e=>{ if(e.key==="Escape"){ clearSel(); if(dragInfo){ endDragPaint(); dragInfo=null; } } });
+  // ドラッグ（従来どおり）＋トレイ対応
+  wo.addEventListener("dragstart",e=>{
+    const el=e.target.closest("[data-sess]"); if(!el||!lastResult){ e.preventDefault(); return; }
+    clearSel();
+    e.dataTransfer.setData("text/plain",el.dataset.sess); e.dataTransfer.effectAllowed="move";
+    beginDrag(el);
+  });
+  tray.addEventListener("dragstart",e=>{
+    const chip=e.target.closest("[data-tray-unit]"); if(!chip||!lastResult){ e.preventDefault(); return; }
+    clearSel();
+    const uid=chip.dataset.trayUnit;
+    e.dataTransfer.setData("text/plain","tray:"+uid); e.dataTransfer.effectAllowed="move";
+    dragValid=computeValid(uid,null);
+    dragPlaceable=lastResult.manual?computePlaceable(uid,null):null;
+    dragInfo={unitId:uid,fromKey:null,keep:{pinned:false,extra:[]},teacherId:state.units.find(x=>x.id===uid).teacherId};
+    paintTargets(dragValid,dragInfo.teacherId,dragPlaceable);
+  });
+  const dropAllowed=(td)=>{ const ck=td.dataset.cell; const teacherOk=!td.dataset.tid||td.dataset.tid===dragInfo.teacherId;
+    return teacherOk && (dragValid.has(ck) || (dragPlaceable&&dragPlaceable.has(ck))); };
+  wo.addEventListener("dragover",e=>{
+    if(!dragInfo) return;
+    const td=e.target.closest("td[data-cell]"); if(!td) return;
+    if(dropAllowed(td)){ e.preventDefault(); e.dataTransfer.dropEffect="move"; }
+  });
+  wo.addEventListener("drop",e=>{
+    if(!dragInfo) return; e.preventDefault();
+    const td=e.target.closest("td[data-cell]"); if(!td) return;
+    const info=dragInfo; const ok=dropAllowed(td);
+    endDragPaint(); dragInfo=null; dragPlaceable=null;
+    if(!ok){ toast("そこには置けません"); return; }
+    if(info.fromKey===null){ if(placeFromTray(info.unitId,td.dataset.cell,true)) afterManualEdit(); }
+    else if(moveSession(info.unitId,info.fromKey,td.dataset.cell,info.keep)) afterManualEdit();
+  });
+  // グリッドのコマをトレイへドロップ=退避
+  tray.addEventListener("dragover",e=>{ if(dragInfo&&dragInfo.fromKey){ e.preventDefault(); e.dataTransfer.dropEffect="move"; } });
+  tray.addEventListener("drop",e=>{
+    if(!dragInfo||!dragInfo.fromKey) return; e.preventDefault();
+    const info=dragInfo; endDragPaint(); dragInfo=null;
+    if(evacuateSession(info.unitId,info.fromKey)) afterManualEdit();
+  });
+  document.addEventListener("dragend",()=>{ endDragPaint(); dragInfo=null; });
+})();
+
+/* ---------- CSV ---------- */
+function exportCsv(){
+  if(!lastResult){ toast("先に「時間割を生成」してください"); return; }
+  const rows=[["週","日付","曜日","コマ","時間","科目","講師","雇用","メンバー","固定"]];
+  lastResult.occ.sessions.slice().sort((a,b)=>a.slot.w-b.slot.w||a.slot.d-b.slot.d||a.slot.k-b.slot.k)
+    .forEach(s=>{ const u=state.units.find(x=>x.id===s.unitId); const tc=teacherById(u.teacherId);
+      let mem=u.members.map(m=>{const st=studentById(m);return st?st.name:"";}).join(" ");
+      const ex=(s.extra||[]).map(m=>{const st=studentById(m);return st?"＋"+st.name:"";}).filter(Boolean).join(" ");
+      if(ex) mem+=(mem?" ":"")+ex;
+      const pinned=(u.pins&&u.pins[s.slot.w+"_"+s.slot.d+"_"+s.slot.k])?"固定":"";
+      rows.push([isWeekly()?"毎週":`第${s.slot.w+1}週`,dateSub(s.slot.w,s.slot.d),DOW[s.slot.d],s.slot.koma.label,s.slot.koma.time,u.subject,tc.name,tc.part?"バイト":"正規",mem,pinned]);
+    });
+  const csv="﻿"+rows.map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(",")).join("\r\n");
+  const blob=new Blob([csv],{type:"text/csv"}); const a=document.createElement("a");
+  a.href=URL.createObjectURL(blob); a.download=`${currentSeason().name}_時間割.csv`; a.click();
+}
+
+/* ---------- 履歴（候補の保存・呼び出し） ---------- */
+function slotFromSaved(w,d,k){ return slotOf(w,d,k); }
+function occFromSessions(saved){
+  const occ=newOcc();
+  saved.forEach(ss=>{ const u=state.units.find(x=>x.id===ss.unitId); if(!u) return;
+    applyPlace(u, slotFromSaved(ss.w,ss.d,ss.k), occ);
+    if(ss.extra&&ss.extra.length) occ.sessions[occ.sessions.length-1].extra=ss.extra.slice(); });
+  return occ;
+}
+function saveHistory(){
+  if(!lastResult){ toast("先に「時間割を生成」してください"); return; }
+  const res=lastResult;
+  const sessions=res.occ.sessions.map(s=>({unitId:s.unitId,w:s.slot.w,d:s.slot.d,k:s.slot.k,extra:(s.extra||[]).slice()}));
+  const need=state.units.reduce((a,u)=>a+uMin(u),0);
+  const entry={
+    id:uid("h"), ts:Date.now(),
+    label:`候補${state.history.length+1}`,
+    stats:{placed:res.occ.sessions.length, need, attend:attendCount(res.occ.sessions), unplaced:res.unplaced.reduce((a,x)=>a+x.remaining,0), soft:Math.round(softCost(res.occ)*10)/10},
+    unplaced:(()=>{ const m={}; res.unplaced.forEach(x=>m[x.unitId]=(m[x.unitId]||0)+x.remaining);
+      (res.staged||[]).forEach(x=>m[x.unitId]=(m[x.unitId]||0)+1); // 退避分も未配置として保存
+      return Object.entries(m).map(([unitId,remaining])=>({unitId,remaining})); })(),
+    sessions
+  };
+  state.history.unshift(entry); save(); renderHistory(); toast("履歴に保存しました");
+}
+function renderHistory(){
+  const card=document.getElementById("historyCard"); const list=document.getElementById("historyList");
+  if(!state.history.length){ card.style.display="none"; return; }
+  card.style.display="block";
+  list.innerHTML="";
+  state.history.forEach(h=>{
+    const dt=new Date(h.ts); const tstr=`${dt.getMonth()+1}/${dt.getDate()} ${String(dt.getHours()).padStart(2,"0")}:${String(dt.getMinutes()).padStart(2,"0")}`;
+    const row=document.createElement("div");
+    row.style.cssText="display:flex;align-items:center;gap:10px;flex-wrap:wrap;border:1px solid var(--line);border-radius:10px;padding:8px 10px;margin-bottom:8px";
+    row.innerHTML=`
+      <input type="text" value="${h.label}" style="width:150px">
+      <span class="muted" style="font-size:12px">${tstr}</span>
+      <span class="tag ${h.stats.unplaced? '':'reg'}">未配置 ${h.stats.unplaced}</span>
+      <span class="tag">ソフト違反 ${h.stats.soft}</span>
+      <span class="tag">総コマ ${h.stats.placed}/${h.stats.need}</span>
+      <span class="tag">延べ ${h.stats.attend!=null?h.stats.attend:attendCount((h.sessions||[]).map(s=>({unitId:s.unitId,extra:s.extra})))}人</span>
+      <span style="margin-left:auto"></span>
+      <button class="btn small primary" onclick="viewHistory('${h.id}')">表示</button>
+      <button class="btn small danger" onclick="delHistory('${h.id}')">削除</button>`;
+    row.querySelector("input").onchange=e=>{ h.label=e.target.value; save(); };
+    list.appendChild(row);
+  });
+}
+function viewHistory(id){
+  const h=state.history.find(x=>x.id===id); if(!h) return;
+  const occ=occFromSessions(h.sessions);
+  lastResult={occ, unplaced:(h.unplaced||[]).map(x=>({unitId:x.unitId,remaining:x.remaining})), pinIssues:[], staged:[]};
+  const need=state.units.reduce((a,u)=>a+uMin(u),0);
+  document.getElementById("runNote").textContent=`「${h.label}」を表示中`;
+  renderStats(lastResult, need, occ.sessions.length);
+  renderViolations(lastResult);
+  renderResultOutput();
+  const w=document.querySelector("#weeksOut .card"); if(w) window.scrollTo(0,w.offsetTop-10);
+  toast(`「${h.label}」を表示しました`);
+}
+function delHistory(id){ state.history=state.history.filter(x=>x.id!==id); save(); renderHistory(); }
+
+/* ---------- 全体描画 ---------- */
+/* ---------- ワンボタン並び替え（一覧の実際の順序を変更） ---------- */
+// 名簿の並び順を変えたら、名簿を表示する全画面（タブ・モーダル・ダッシュボード）を更新
+function refreshRosterViews(){
+  renderTeachers(); renderStudents(); renderUnits(); renderFlex(); renderDashboard();
+  if(document.getElementById("memberModal").classList.contains("open")) renderMemberList();
+  if(document.getElementById("flexModal").classList.contains("open")) openFlexUnits(editingFlexId);
+  fillPersonSel();
+}
+function sortStudents(mode){
+  const byGrade=(a,b)=>gradeIdx(a.grade)-gradeIdx(b.grade);
+  const byName=(a,b)=>a.name.localeCompare(b.name,"ja");
+  if(mode==="grade") state.students.sort((a,b)=>byGrade(a,b)||byName(a,b));
+  else if(mode==="name") state.students.sort(byName);
+  else if(mode==="submitted") state.students.sort((a,b)=>(a.submitted?1:0)-(b.submitted?1:0)||byGrade(a,b)||byName(a,b));
+  save(); refreshRosterViews(); toast("並び替えました（この順序で保存されます）");
+}
+function sortTeachers(mode){
+  const byName=(a,b)=>a.name.localeCompare(b.name,"ja");
+  if(mode==="name") state.teachers.sort(byName);
+  else if(mode==="employment") state.teachers.sort((a,b)=>(a.part?1:0)-(b.part?1:0)||byName(a,b)); // 正規→バイト
+  save(); refreshRosterViews(); toast("並び替えました（この順序で保存されます）");
+}
+function sortUnits(mode){
+  const tIdx=(u)=>{ const i=state.teachers.findIndex(t=>t.id===u.teacherId); return i<0?999:i; };
+  const uGrade=(u)=>Math.min(...u.members.map(m=>{const s=studentById(m);return s?gradeIdx(s.grade):999;}),999); // メンバー最年少の学年
+  const bySubj=(a,b)=>a.subject.localeCompare(b.subject,"ja");
+  if(mode==="teacher") state.units.sort((a,b)=>tIdx(a)-tIdx(b)||bySubj(a,b));
+  else if(mode==="subject") state.units.sort((a,b)=>bySubj(a,b)||tIdx(a)-tIdx(b));
+  else if(mode==="grade") state.units.sort((a,b)=>uGrade(a)-uGrade(b)||bySubj(a,b));
+  save(); refreshRosterViews(); toast("並び替えました（この順序で保存されます）");
+}
+function moveUnit(idx,dir){ if(moveItem(state.units,idx,dir)){ save(); renderUnits(); renderDashboard(); } }
+
+/* ---------- ダッシュボード ---------- */
+let dashSort={key:"grade",dir:1};
+let unitSort={key:"teacher",dir:1};
+let teaSort={key:"order",dir:1};
+function gradeIdx(g){ const i=GRADES.indexOf(g); return i<0?GRADES.length:i; }
+function dashSortBy(k){ if(dashSort.key===k) dashSort.dir*=-1; else dashSort={key:k,dir:1}; renderDashboard(); }
+function unitSortBy(k){ if(unitSort.key===k) unitSort.dir*=-1; else unitSort={key:k,dir:1}; renderDashboard(); }
+function teaSortBy(k){ if(teaSort.key===k) teaSort.dir*=-1; else teaSort={key:k,dir:1}; renderDashboard(); }
+function renderDashboard(){
+  const stu=document.getElementById("stuDash"); if(!stu) return;
+  const komaOrder={}; state.komas.forEach((k,i)=>komaOrder[k.id]=i);
+  // 直近生成の生徒別集計（固定メンバー＋かけもち）
+  const asg={};
+  if(lastResult){
+    const perDay={};
+    lastResult.occ.sessions.forEach(s=>{ const u=state.units.find(x=>x.id===s.unitId); if(!u) return;
+      [...u.members,...(s.extra||[])].forEach(m=>{
+        (asg[m]=asg[m]||{count:0,days:new Set(),gaps:0}); asg[m].count++; asg[m].days.add(s.slot.dayId);
+        const k2=m+"|"+s.slot.dayId; (perDay[k2]=perDay[k2]||[]).push(komaOrder[s.slot.k]);
+      });
+    });
+    for(const key in perDay){ const sid=key.split("|")[0]; const a=perDay[key].sort((x,y)=>x-y);
+      asg[sid].gaps+=(a[a.length-1]-a[0]+1)-a.length; }
+  }
+  const SWm=studentWeights();
+  const rows=state.students.map(s=>{
+    const own=state.units.filter(u=>u.members.includes(s.id));
+    const pMin=own.reduce((a,u)=>a+uMin(u),0), pMax=own.reduce((a,u)=>a+uMax(u),0);
+    const flexCnt=state.flex.filter(f=>f.studentId===s.id).reduce((a,f)=>a+f.count,0);
+    const p=SWm[s.id]||{surplus:0,w:1,need:0,avail:0};
+    const availCnt=s.submitted?p.avail:null; // エンジンが実際に使える枠数（開校日×週数内）に統一
+    const a=asg[s.id];
+    const surplusDisp = !s.submitted ? '<span class="muted">—</span>'
+      : `${p.surplus>=0?"＋":""}${p.surplus}${p.w<0.7?` <span class="tag" style="background:${p.w===0?'#fdf1f0;color:var(--bad)':'#fff4e0;color:var(--warn)'}">重み${p.w.toFixed(2)}</span>`:""}`;
+    return {grade:s.grade, name:s.name, submitted:s.submitted?1:0,
+      avail:availCnt===null?1e9:availCnt, availDisp:availCnt===null?'<span class="muted">全枠（未提出）</span>':availCnt+"枠",
+      surplus:s.submitted?p.surplus:1e9, surplusDisp,
+      units:own.length, unitsDisp:own.map(u=>u.subject).join("・")+(flexCnt?`${own.length?"・":""}かけもち${flexCnt}回`:"")||"—",
+      planned:pMin+flexCnt, plannedDisp:(pMin===pMax?String(pMin):pMin+"〜"+pMax)+(flexCnt?`＋${flexCnt}`:""),
+      asgCount:a?a.count:-1, asgDisp:a?`${a.count}コマ／${a.days.size}日／空き${a.gaps}`:"—"};
+  });
+  const dir=dashSort.dir;
+  rows.sort((x,y)=>{
+    switch(dashSort.key){
+      case "name": return dir*x.name.localeCompare(y.name,"ja");
+      case "grade": { const d=gradeIdx(x.grade)-gradeIdx(y.grade); return dir*(d||x.name.localeCompare(y.name,"ja")); }
+      case "submitted": return dir*(x.submitted-y.submitted);
+      case "avail": return dir*(x.avail-y.avail);
+      case "surplus": return dir*(x.surplus-y.surplus);
+      case "units": return dir*(x.units-y.units);
+      case "planned": return dir*(x.planned-y.planned);
+      case "assigned": return dir*(x.asgCount-y.asgCount);
+    } return 0;
+  });
+  const arrow=(k)=>dashSort.key===k?(dir>0?" ▲":" ▼"):"";
+  const th=(k,label)=>`<th style="cursor:pointer;white-space:nowrap" onclick="dashSortBy('${k}')">${label}${arrow(k)}</th>`;
+  stu.innerHTML=`<table><tr>${th("name","氏名")}${th("grade","学年")}${th("submitted","提出")}${th("avail","登校可能")}${th("surplus","余裕")}${th("units","所属")}${th("planned","予定コマ数")}${th("assigned","割当（直近生成）")}</tr>`+
+    rows.map(r=>`<tr${r.submitted?"":' style="background:#fffaf0"'}><td>${r.name}</td><td>${r.grade}</td><td>${r.submitted?"✅":'<span class="tag" style="background:#fff4e0;color:var(--warn)">未提出</span>'}</td><td>${r.availDisp}</td><td>${r.surplusDisp}</td><td class="muted" style="font-size:12px">${r.unitsDisp}</td><td>${r.plannedDisp}</td><td>${r.asgDisp}</td></tr>`).join("")+"</table>";
+
+  // ユニット統計（列見出しクリックで並び替え）
+  const placedBy={}; if(lastResult) lastResult.occ.sessions.forEach(s=>{ placedBy[s.unitId]=(placedBy[s.unitId]||0)+1; });
+  const urows=state.units.map(u=>{ const tc=teacherById(u.teacherId); const p=lastResult?(placedBy[u.id]||0):null;
+    return {u, subject:u.subject, teacher:tc?tc.name:"", tIdx:state.teachers.findIndex(t=>t.id===u.teacherId),
+      members:u.members.length, kmin:uMin(u), pins:Object.keys(u.pins||{}).length, placed:p===null?-1:p,
+      grade:Math.min(...u.members.map(m=>{const s=studentById(m);return s?gradeIdx(s.grade):99;}),99),
+      warn:p!==null&&p<uMin(u)}; });
+  const ud=unitSort.dir;
+  urows.sort((x,y)=>{ switch(unitSort.key){
+    case "subject": return ud*x.subject.localeCompare(y.subject,"ja");
+    case "teacher": return ud*((x.tIdx-y.tIdx)||x.subject.localeCompare(y.subject,"ja"));
+    case "members": return ud*(x.members-y.members);
+    case "koma": return ud*(x.kmin-y.kmin);
+    case "grade": return ud*(x.grade-y.grade);
+    case "pins": return ud*(x.pins-y.pins);
+    case "placed": return ud*(x.placed-y.placed);
+  } return 0; });
+  const uarrow=(k)=>unitSort.key===k?(ud>0?" ▲":" ▼"):"";
+  const uth=(k,label)=>`<th style="cursor:pointer;white-space:nowrap" onclick="unitSortBy('${k}')">${label}${uarrow(k)}</th>`;
+  document.getElementById("unitDash").innerHTML=`<table><tr>${uth("subject","科目")}${uth("teacher","講師")}${uth("grade","学年")}${uth("members","人数")}${uth("koma",isWeekly()?"回数":"回数（最低〜最大）")}${uth("pins","固定")}${uth("placed","配置（直近生成）")}</tr>`+
+    urows.map(r=>{ const u=r.u; const tc=teacherById(u.teacherId);
+      return `<tr><td>${u.subject}</td><td>${tc?tc.name:"?"}${tc&&tc.part?"(バ)":""}</td><td>${r.grade<99?GRADES[r.grade]:"—"}</td><td>${r.members}人</td><td>${uMin(u)===uMax(u)?uMin(u):uMin(u)+"〜"+uMax(u)}${isWeekly()?"（週1固定）":""}</td><td>${r.pins}</td><td${r.warn?' style="color:var(--bad);font-weight:700"':""}>${r.placed<0?"—":r.placed+"コマ"}</td></tr>`; }).join("")+"</table>";
+
+  // 講師統計
+  const teaAgg={};
+  if(lastResult){
+    const perDay={};
+    lastResult.occ.sessions.forEach(s=>{ const u=state.units.find(x=>x.id===s.unitId); if(!u) return;
+      (teaAgg[u.teacherId]=teaAgg[u.teacherId]||{count:0,attend:0,days:new Set(),gaps:0});
+      teaAgg[u.teacherId].count++;
+      teaAgg[u.teacherId].attend+=u.members.length+((s.extra&&s.extra.length)||0);
+      teaAgg[u.teacherId].days.add(s.slot.dayId);
+      const k2=u.teacherId+"|"+s.slot.dayId; (perDay[k2]=perDay[k2]||[]).push(komaOrder[s.slot.k]); });
+    for(const key in perDay){ const tid=key.split("|")[0]; const a=perDay[key].sort((x,y)=>x-y);
+      teaAgg[tid].gaps+=(a[a.length-1]-a[0]+1)-a.length; }
+  }
+  const trows=state.teachers.map((t,i)=>{ const own=state.units.filter(u=>u.teacherId===t.id);
+    const mn=own.reduce((a,u)=>a+uMin(u),0), mx=own.reduce((a,u)=>a+uMax(u),0); const a=teaAgg[t.id];
+    return {t, tIdx:i, name:t.name, part:t.part?1:0, units:own.length, need:mn, count:a?a.count:-1,
+      attend:a?a.attend:-1, days:a?a.days.size:-1, gaps:a?a.gaps:-1, mn, mx, a}; });
+  const td_=teaSort.dir;
+  trows.sort((x,y)=>{ switch(teaSort.key){
+    case "name": return td_*x.name.localeCompare(y.name,"ja");
+    case "employment": return td_*((x.part-y.part)||x.name.localeCompare(y.name,"ja"));
+    case "order": return td_*(x.tIdx-y.tIdx);
+    case "units": return td_*(x.units-y.units);
+    case "need": return td_*(x.need-y.need);
+    case "count": return td_*(x.count-y.count);
+    case "attend": return td_*(x.attend-y.attend);
+    case "days": return td_*(x.days-y.days);
+    case "gaps": return td_*(x.gaps-y.gaps);
+  } return 0; });
+  const tarrow=(k)=>teaSort.key===k?(td_>0?" ▲":" ▼"):"";
+  const tth=(k,label)=>`<th style="cursor:pointer;white-space:nowrap" onclick="teaSortBy('${k}')">${label}${tarrow(k)}</th>`;
+  document.getElementById("teaDash").innerHTML=`<table><tr>${tth("order","講師")}${tth("employment","雇用")}${tth("units","担当ユニット")}${tth("need","必要コマ合計")}${tth("count","総コマ数")}${tth("attend","延べ人数")}${tth("days","出勤日数")}${tth("gaps","空きコマ")}</tr>`+
+    trows.map(r=>{ const t=r.t; const a=r.a; const gapStyle=a&&a.gaps&&t.part?' style="color:var(--warn);font-weight:700"':"";
+      return `<tr><td>${t.name}</td><td>${t.part?'<span class="tag part">バイト</span>':'<span class="tag reg">正規</span>'}</td><td>${r.units}</td><td>${r.mn===r.mx?r.mn:r.mn+"〜"+r.mx}</td><td>${a?a.count+"コマ":"—"}</td><td>${a?a.attend+"人":"—"}</td><td>${a?a.days.size+"日":"—"}</td><td${gapStyle}>${a?a.gaps:"—"}</td></tr>`; }).join("")+"</table>";
+}
+
+function renderAll(){ renderConfig(); renderTeachers(); renderStudents(); renderUnits(); renderFlex(); renderHistory(); renderDashboard(); }
+buildNav(); loadApp(); renderSeasonBar(); renderAll(); showPanel("config");
+document.getElementById("importFile").addEventListener("change",e=>{ if(e.target.files[0]) importBackup(e.target.files[0]); e.target.value=""; });
+initBackupDir();
+</script>
