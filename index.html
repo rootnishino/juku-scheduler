@@ -1760,7 +1760,8 @@ function renderWeeks(res){
           const ex=(s.extra||[]).map(m=>{const st=studentById(m);return st?"＋"+st.name:"";}).filter(Boolean).join("・");
           if(ex) mem+=(mem?"・":"")+ex;
           const pin=(u.pins&&u.pins[key])?"📌":"";
-          html+=`<div class="sess" draggable="true" data-sess="${u.id}|${key}">${pin}<span class="subj">${u.subject}</span> <span class="muted">${tc.name}${tc.part?'(バ)':''}</span><br><span class="mem">${mem}</span></div>`;
+          const [sbg,sbd]=subjColor(u);
+          html+=`<div class="sess" draggable="true" data-sess="${u.id}|${key}" style="background:${sbg};border-left:3px solid ${sbd}">${pin}<span class="subj">${u.subject}</span> <span class="muted">${tc.name}${tc.part?'(バ)':''}</span><br><span class="mem">${mem}</span></div>`;
         });
         html+="</td>";
       }
@@ -1775,6 +1776,15 @@ function renderWeeks(res){
 let resultView="units";
 const TEACHER_COLORS=[["#e8f0ff","#2f6df6"],["#e3f6ee","#12805c"],["#fff4e0","#c47b00"],["#f3e8ff","#8b4fd6"],["#ffe8ec","#d1447e"],["#e0f4f4","#0e8a8a"],["#f0f4e0","#6a8a0e"],["#ffeede","#d1662f"]];
 function teacherColor(tid){ const i=state.teachers.findIndex(t=>t.id===tid); return TEACHER_COLORS[(i<0?0:i)%TEACHER_COLORS.length]; }
+/* 5教科の色分け: 英=黄・国=水色・社=緑・数=赤・理=オレンジ（判定キーワードはスプレッドシートの条件付き書式と同じ、数を最優先で理系数学の誤判定を防ぐ） */
+const SUBJ_COLORS=[
+  [/数|算/, ["#f9d9d0","#d4502e"]],   // 数学=赤
+  [/英/,    ["#fff6c2","#c9a406"]],   // 英語=黄
+  [/理|化|物/,["#ffe3b8","#e08c00"]], // 理科=オレンジ（赤と黄の中間）
+  [/国|現|典/,["#d9edf9","#3d8fc4"]], // 国語=水色
+  [/社|世|政/,["#dcedd0","#5a9432"]], // 社会=緑
+];
+function subjColor(u){ for(const [re,c] of SUBJ_COLORS) if(re.test(u.subject)) return c; return ["#eef0f3","#8a93a0"]; }
 function setResultView(v){ resultView=v; renderResultOutput(); }
 function renderResultOutput(){
   if(!lastResult) return;
@@ -1830,7 +1840,7 @@ function renderFitView(res){
       dows.forEach(d=>T.forEach((t,i)=>{
         const key=w+"_"+d+"_"+k.id;
         const s=map[key+"_"+t.id]; let cell="";
-        if(s){ const u=state.units.find(x=>x.id===s.unitId); const [bg,bd]=teacherColor(t.id);
+        if(s){ const u=state.units.find(x=>x.id===s.unitId); const [bg,bd]=subjColor(u);
           const chars=[...u.members,...(s.extra||[])].map(m=>{const st=studentById(m);return st?st.name[0]:"";}).join("");
           const pin=(u.pins&&u.pins[key])?"📌":"";
           cell=`<div class="fit-sess" draggable="true" data-sess="${s.unitId}|${key}" style="background:${bg};border-left:2px solid ${bd}"><b>${pin}${shortCode(u.subject)}</b><br>${chars}</div>`; }
@@ -1898,7 +1908,7 @@ function personCard(res,p){
         const key=w+"_"+d+"_"+k.id;
         const s=map[key];
         if(s){ const u=state.units.find(x=>x.id===s.unitId); const tc=teacherById(u.teacherId);
-          const [bg,bd]=teacherColor(u.teacherId);
+          const [bg,bd]=subjColor(u);
           const isExtra=!isT&&(s.extra||[]).includes(p.id);
           const detail=isT? sessMemberNames(u,s) : `${tc?tc.name:"?"}`;
           html+=`<td><div class="sess-box" style="background:${bg};border-left:3px solid ${bd}"><b>${u.subject}</b>${isExtra?' <span class="pill">かけもち</span>':""}<br><span class="mem">${detail}</span></div></td>`;
@@ -2014,7 +2024,7 @@ function renderTray(){
   const c=trayCounts();
   const chips=Object.entries(c).map(([uid,n])=>{
     const u=state.units.find(x=>x.id===uid); if(!u) return "";
-    const [bg,bd]=teacherColor(u.teacherId);
+    const [bg,bd]=subjColor(u);
     const sel=selInfo&&selInfo.type==="tray"&&selInfo.unitId===uid?" sel":"";
     return `<span class="stage-chip${sel}" draggable="true" data-tray-unit="${uid}" style="background:${bg};border-left:3px solid ${bd}">${shortCode(u.subject)} <span class="cnt">×${n}</span></span>`;
   }).join("");
