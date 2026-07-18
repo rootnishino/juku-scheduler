@@ -70,6 +70,11 @@
   .viol-grp[open] summary::before{transform:rotate(90deg)}
   .viol-grp summary .cnt{font-weight:400;font-size:11px;background:rgba(0,0,0,.07);border-radius:20px;padding:1px 8px}
   .viol-grp .viol{border:none;border-top:1px dashed var(--line);border-radius:0;margin:0;background:transparent;font-size:12.5px}
+  .viol-chips{display:flex;flex-wrap:wrap;gap:7px;margin:4px 0 8px}
+  .viol-chip{display:inline-flex;align-items:center;gap:6px;border:1px solid #f0c36d;border-radius:20px;padding:4px 13px;font-size:12.5px;font-weight:600;background:#fffaf0;color:#8a5a00;cursor:pointer}
+  .viol-chip .n{font-size:11px;font-weight:400;opacity:.75}
+  .viol-chip.on{box-shadow:0 0 0 2px var(--accent)}
+  #violChipDetail{border:1px solid var(--line);border-radius:8px;background:#fffdf7;margin-bottom:8px}
   .modal-bg{position:fixed;inset:0;background:rgba(20,28,40,.45);display:none;align-items:center;justify-content:center;z-index:50;padding:16px}
   .modal-bg.open{display:flex}
   .modal{background:#fff;border-radius:14px;padding:18px;max-width:640px;width:100%;max-height:88vh;overflow:auto}
@@ -1742,13 +1747,29 @@ function renderViolations(res){
      <span class="tag">バイト1コマ出勤日 ${thinDays}</span>
      <span class="tag">△配置 ${triCnt}</span>
      <span class="tag">遅い時間NG違反 ${msAvoid}</span></div>`;
-  // 種類ごとに折りたたみ表示（ハード違反＝要対応のみ最初から展開）
+  // ハード違反（要対応）は常に展開表示、ソフト違反は種類チップ→クリックで下に詳細
   const groups=[]; const gIdx={};
   items.forEach(i=>{ if(!(i.t in gIdx)){ gIdx[i.t]=groups.length; groups.push({t:i.t,hard:!!i.hard,arr:[]}); } groups[gIdx[i.t]].arr.push(i); });
-  groups.sort((a,b)=>(b.hard?1:0)-(a.hard?1:0));
-  list.innerHTML=summary+groups.map(g=>
-    `<details class="viol-grp${g.hard?' hard':''}"${g.hard?" open":""}><summary>${g.t}<span class="cnt">${g.arr.length}件</span></summary>`+
+  const hardG=groups.filter(g=>g.hard), softG=groups.filter(g=>!g.hard);
+  violSoftGroups=softG;
+  const hardHtml=hardG.map(g=>
+    `<details class="viol-grp hard" open><summary>${g.t}<span class="cnt">${g.arr.length}件</span></summary>`+
     g.arr.map(i=>`<div class="viol">${i.msg}</div>`).join("")+`</details>`).join("");
+  const chips=softG.map((g,i)=>`<button class="viol-chip" data-vc="${i}" onclick="toggleViolChip(${i})">${g.t}<span class="n">${g.arr.length}件</span></button>`).join("");
+  list.innerHTML=summary+hardHtml+
+    (softG.length?`<div class="viol-chips">${chips}</div><div id="violChipDetail" style="display:none"></div>`:"");
+}
+let violSoftGroups=[];
+function toggleViolChip(i){
+  const det=document.getElementById("violChipDetail"); if(!det) return;
+  const chips=document.querySelectorAll(".viol-chip");
+  const cur=det.dataset.i;
+  chips.forEach(c=>c.classList.remove("on"));
+  if(cur===String(i)&&det.style.display!=="none"){ det.style.display="none"; det.dataset.i=""; return; }
+  const g=violSoftGroups[i]; if(!g) return;
+  chips[i]&&chips[i].classList.add("on");
+  det.dataset.i=String(i); det.style.display="block";
+  det.innerHTML=g.arr.map(x=>`<div class="viol" style="margin:0;border:none;border-top:1px dashed var(--line);border-radius:0;background:transparent">${x.msg}</div>`).join("");
 }
 function renderWeeks(res){
   const out=document.getElementById("weeksOut"); out.innerHTML="";
