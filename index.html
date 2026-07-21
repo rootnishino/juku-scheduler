@@ -288,6 +288,11 @@
       <p class="hint">「未配置」があれば最優先。ソフト違反は数個なら許容範囲です。</p>
       <div id="violList"></div>
     </div>
+    <div class="card" id="teaStatCard" style="display:none">
+      <h2>講師統計（いまの時間割）</h2>
+      <p class="hint">コマを動かすたびに更新されます。「配置コマ」は 置いた数 / 必要数。バイト講師の空きコマ・1コマだけの出勤日は黄色で強調します。</p>
+      <div class="grid-scroll" id="teaStatRun"></div>
+    </div>
     <div class="card" id="viewBar" style="display:none">
       <div class="toolbar">
         <span class="muted">表示形式：</span>
@@ -1567,6 +1572,7 @@ function run(){
   renderStats(res,totalNeed,placed);
   renderViolations(res);
   renderResultOutput();
+  renderRunTeacherStats();
   renderDashboard();
   document.getElementById("fillRestBtn").style.display="none";
   showPanel("result");
@@ -1588,7 +1594,7 @@ function startManual(){
     document.getElementById("runNote").textContent="手動配置モード：待機エリアのコマをグリッドへ（置いたコマは📌固定）";
     document.getElementById("fillRestBtn").style.display="";
     renderStats(lastResult,need,occ.sessions.length);
-    renderViolations(lastResult); renderResultOutput(); renderDashboard();
+    renderViolations(lastResult); renderResultOutput(); renderRunTeacherStats(); renderDashboard();
     showPanel("result"); setResultView("desk");
     toast("待機エリアのコマをドラッグ／クリックで配置。グレーのマスにも置けます（違反として計上）");
   });
@@ -1788,6 +1794,7 @@ function renderViolations(res){
 const CHANGELOG=[
  {d:"2026-07-21",h:"グレー枠にも置けるように",items:[
   "編集済みファイルが担当の人から無事届いて反映。",
+  "「ダッシュボードの講師統計を、生成したスケジュールに合わせて生成・結果タブにも表示できる？コマを新しく置くたびに反映してほしい」→ 生成・結果タブに「講師統計（いまの時間割）」を追加。配置コマ（置いた数/必要数）・延べ人数・出勤日数・空きコマ・1コマ出勤日を表示し、コマを動かすたびに即座に更新される。不足は赤、バイトの空きコマ・1コマ出勤日は黄色で強調。",
   "「同じ日に2件をソフト違反にしたけど、3件以上は禁止にして」→ 上限を追加。2回目までは置けて黄色チップの警告、3回目は物理的にブロック（候補マスにも出ない）。📌固定を3つ付けるなど別経路で3回になった場合は「同日の回数オーバー」として赤で要対応表示。",
   "「同じ日に複数配置のエラーもソフト扱いにして」→ 「同じユニットは1日1回まで」をハード制約からソフト違反に格下げ。手動でも自動でも同じ日に2回置けるようになり、チェック結果には「同じユニットが同日に複数回」として黄色チップで表示される。自動生成は今まで通り1日1回を優先し、それだと置ききれないときだけ重ねる（ペナルティ2.0）。",
   "「待機エリアのコマを灰色の枠に入れることができないのはなぜ？」→ 調べたら、グレー枠に強行配置できるのは手動配置モードのときだけで、通常の生成結果画面ではクリックしても無反応（しかもメッセージすら出ない）という状態だった。通常画面でも置ける／動かせるように統一し、置いた瞬間に「〇〇さんが登校できない時間です」など理由をトーストで警告するようにした。違反内容はチェック結果にも今まで通り載る。",
@@ -2323,6 +2330,7 @@ function afterManualEdit(){
   renderStats(lastResult,needMin,lastResult.occ.sessions.length);
   renderViolations(lastResult);
   renderResultOutput();
+  renderRunTeacherStats();
   renderDashboard();
 }
 // イベント委譲（ビューを再描画しても効く）
@@ -2477,6 +2485,7 @@ function viewHistory(id){
   renderStats(lastResult, need, occ.sessions.length);
   renderViolations(lastResult);
   renderResultOutput();
+  renderRunTeacherStats();
   const w=document.querySelector("#weeksOut .card"); if(w) window.scrollTo(0,w.offsetTop-10);
   toast(`「${h.label}」を表示しました`);
 }
@@ -2519,6 +2528,45 @@ function moveUnit(idx,dir){ if(moveItem(state.units,idx,dir)){ save(); renderUni
 /* ---------- ダッシュボード ---------- */
 let dashSort={key:"grade",dir:1};
 let unitSort={key:"teacher",dir:1};
+/* 講師統計の集計（ダッシュボードと生成・結果タブで共用。直近の生成結果 lastResult に追従） */
+function teacherStatRows(){
+  const komaOrder={}; state.komas.forEach((k,i)=>komaOrder[k.id]=i);
+  const teaAgg={};
+  if(lastResult){
+    const perDay={};
+    lastResult.occ.sessions.forEach(s=>{ const u=state.units.find(x=>x.id===s.unitId); if(!u) return;
+      (teaAgg[u.teacherId]=teaAgg[u.teacherId]||{count:0,attend:0,days:new Set(),gaps:0,thin:0});
+      teaAgg[u.teacherId].count++;
+      teaAgg[u.teacherId].attend+=u.members.length+((s.extra&&s.extra.length)||0);
+      teaAgg[u.teacherId].days.add(s.slot.dayId);
+      const k2=u.teacherId+"|"+s.slot.dayId; (perDay[k2]=perDay[k2]||[]).push(komaOrder[s.slot.k]); });
+    for(const key in perDay){ const tid=key.split("|")[0]; const a=perDay[key].sort((x,y)=>x-y);
+      teaAgg[tid].gaps+=(a[a.length-1]-a[0]+1)-a.length;
+      if(a.length===1) teaAgg[tid].thin++; } // 1コマだけの出勤日（交通費の無駄）
+  }
+  return state.teachers.map((t,i)=>{ const own=state.units.filter(u=>u.teacherId===t.id);
+    const mn=own.reduce((a,u)=>a+uMin(u),0), mx=own.reduce((a,u)=>a+uMax(u),0); const a=teaAgg[t.id];
+    return {t, tIdx:i, name:t.name, part:t.part?1:0, units:own.length, need:mn, count:a?a.count:-1,
+      attend:a?a.attend:-1, days:a?a.days.size:-1, gaps:a?a.gaps:-1, thin:a?a.thin:-1, mn, mx, a}; });
+}
+/* 生成・結果タブ用のコンパクト表（コマを動かすたびに再描画される） */
+function renderRunTeacherStats(){
+  const card=document.getElementById("teaStatCard");
+  if(!card) return;
+  if(!lastResult){ card.style.display="none"; return; }
+  card.style.display="block";
+  const rows=teacherStatRows().sort((x,y)=>x.tIdx-y.tIdx);
+  document.getElementById("teaStatRun").innerHTML=
+    `<table><tr><th>講師</th><th>雇用</th><th>配置コマ</th><th>延べ人数</th><th>出勤日数</th><th>空きコマ</th><th>1コマ出勤日</th></tr>`+
+    rows.map(r=>{ const t=r.t, a=r.a;
+      const short=a&&a.count<r.mn;
+      const gapStyle=a&&a.gaps&&t.part?' style="color:var(--warn);font-weight:700"':"";
+      const thinStyle=a&&a.thin&&t.part?' style="color:var(--warn);font-weight:700"':"";
+      return `<tr><td>${t.name}</td><td>${t.part?'<span class="tag part">バイト</span>':'<span class="tag reg">正規</span>'}</td>`+
+        `<td${short?' style="color:var(--bad);font-weight:700"':""}>${a?a.count:0} / ${r.mn}</td>`+
+        `<td>${a?a.attend:0}人</td><td>${a?a.days.size:0}日</td><td${gapStyle}>${a?a.gaps:0}</td><td${thinStyle}>${a?a.thin:0}</td></tr>`;
+    }).join("")+"</table>";
+}
 let teaSort={key:"order",dir:1};
 function gradeIdx(g){ const i=GRADES.indexOf(g); return i<0?GRADES.length:i; }
 function dashSortBy(k){ if(dashSort.key===k) dashSort.dir*=-1; else dashSort={key:k,dir:1}; renderDashboard(); }
@@ -2599,22 +2647,7 @@ function renderDashboard(){
       return `<tr><td>${u.subject}</td><td>${tc?tc.name:"?"}${tc&&tc.part?"(バ)":""}</td><td>${r.grade<99?GRADES[r.grade]:"—"}</td><td>${r.members}人</td><td>${uMin(u)===uMax(u)?uMin(u):uMin(u)+"〜"+uMax(u)}${isWeekly()?"（週1固定）":""}</td><td>${r.pins}</td><td${r.warn?' style="color:var(--bad);font-weight:700"':""}>${r.placed<0?"—":r.placed+"コマ"}</td></tr>`; }).join("")+"</table>";
 
   // 講師統計
-  const teaAgg={};
-  if(lastResult){
-    const perDay={};
-    lastResult.occ.sessions.forEach(s=>{ const u=state.units.find(x=>x.id===s.unitId); if(!u) return;
-      (teaAgg[u.teacherId]=teaAgg[u.teacherId]||{count:0,attend:0,days:new Set(),gaps:0});
-      teaAgg[u.teacherId].count++;
-      teaAgg[u.teacherId].attend+=u.members.length+((s.extra&&s.extra.length)||0);
-      teaAgg[u.teacherId].days.add(s.slot.dayId);
-      const k2=u.teacherId+"|"+s.slot.dayId; (perDay[k2]=perDay[k2]||[]).push(komaOrder[s.slot.k]); });
-    for(const key in perDay){ const tid=key.split("|")[0]; const a=perDay[key].sort((x,y)=>x-y);
-      teaAgg[tid].gaps+=(a[a.length-1]-a[0]+1)-a.length; }
-  }
-  const trows=state.teachers.map((t,i)=>{ const own=state.units.filter(u=>u.teacherId===t.id);
-    const mn=own.reduce((a,u)=>a+uMin(u),0), mx=own.reduce((a,u)=>a+uMax(u),0); const a=teaAgg[t.id];
-    return {t, tIdx:i, name:t.name, part:t.part?1:0, units:own.length, need:mn, count:a?a.count:-1,
-      attend:a?a.attend:-1, days:a?a.days.size:-1, gaps:a?a.gaps:-1, mn, mx, a}; });
+  const trows=teacherStatRows();
   const td_=teaSort.dir;
   trows.sort((x,y)=>{ switch(teaSort.key){
     case "name": return td_*x.name.localeCompare(y.name,"ja");
