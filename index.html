@@ -1305,9 +1305,13 @@ function canPlace(u, slot, occ){
     for(const m of u.members) if(cell.students.has(m)) return false; // 生徒重複
     if(cell.units.length>=maxConcurrent()) return false;      // 教室数（最大同時授業数）上限
   }
-  // 同じユニットの同日複数回はソフト扱い（softCostで加点。ハードでは弾かない）
+  // 同じユニットの同日: 2回目まではソフト（softCostで加点）、3回目以上はハード禁止
+  if(sameDayCount(occ,u.id,slot.dayId) >= SAMEDAY_MAX) return false;
   return true;
 }
+// 同じユニットを同じ日に置ける上限（2回まで＝1日2コマ。3回以上は禁止）
+const SAMEDAY_MAX=2;
+function sameDayCount(occ,unitId,dayId){ const ud=occ.unitDays[unitId]; return (ud&&ud[dayId])||0; }
 // 最大同時授業数（教室数）。未設定なら講師数（＝実質無制限）
 function maxConcurrent(){ const n=state.maxConcurrent; return (n&&n>0)?n:Math.max(1,state.teachers.length); }
 // そのコマに教室の空きがあるか
@@ -1746,13 +1750,15 @@ function renderViolations(res){
     if(s.slot.koma.avoidMS && unitHasLateNG(u)){ msAvoid++;
       items.push({t:"遅い時間NG",msg:`「${u.subject}」を第${s.slot.w+1}週${DOW[s.slot.d]}曜 ${s.slot.koma.label}(${s.slot.koma.time}) に配置（遅い時間NGの生徒がいるため避けたい時間）。`}); }
   });
-  // 同じユニットが同じ日に複数回（ソフト扱い）
+  // 同じユニットが同じ日に複数回（2回まで=ソフト、3回以上=禁止なので要対応）
   let sameDay=0; const udMap={};
   res.occ.sessions.forEach(s=>{ const k=s.unitId+"|"+s.slot.w+"_"+s.slot.d; (udMap[k]=udMap[k]||[]).push(s); });
   for(const k in udMap){ const arr=udMap[k]; if(arr.length<2) continue;
     const u=state.units.find(x=>x.id===arr[0].unitId); const sl=arr[0].slot; sameDay+=arr.length-1;
     const komas=arr.map(x=>x.slot.koma.label).join("・");
-    items.push({t:"同じユニットが同日に複数回",msg:`「${u?u.subject:""}」・第${sl.w+1}週${DOW[sl.d]}曜：同じ日に ${arr.length} 回（${komas}）。なるべく別の日に分けたい配置です。`});
+    const where=`「${u?u.subject:""}」・第${sl.w+1}週${DOW[sl.d]}曜：同じ日に ${arr.length} 回（${komas}）`;
+    if(arr.length>SAMEDAY_MAX) items.push({hard:true,t:"同日の回数オーバー",msg:`${where}。同じ日は ${SAMEDAY_MAX} 回までです（📌固定の置きすぎが原因の可能性）。減らしてください。`});
+    else items.push({t:"同じユニットが同日に複数回",msg:`${where}。なるべく別の日に分けたい配置です。`});
   }
 
   card.style.display="block";
@@ -1782,6 +1788,7 @@ function renderViolations(res){
 const CHANGELOG=[
  {d:"2026-07-21",h:"グレー枠にも置けるように",items:[
   "編集済みファイルが担当の人から無事届いて反映。",
+  "「同じ日に2件をソフト違反にしたけど、3件以上は禁止にして」→ 上限を追加。2回目までは置けて黄色チップの警告、3回目は物理的にブロック（候補マスにも出ない）。📌固定を3つ付けるなど別経路で3回になった場合は「同日の回数オーバー」として赤で要対応表示。",
   "「同じ日に複数配置のエラーもソフト扱いにして」→ 「同じユニットは1日1回まで」をハード制約からソフト違反に格下げ。手動でも自動でも同じ日に2回置けるようになり、チェック結果には「同じユニットが同日に複数回」として黄色チップで表示される。自動生成は今まで通り1日1回を優先し、それだと置ききれないときだけ重ねる（ペナルティ2.0）。",
   "「待機エリアのコマを灰色の枠に入れることができないのはなぜ？」→ 調べたら、グレー枠に強行配置できるのは手動配置モードのときだけで、通常の生成結果画面ではクリックしても無反応（しかもメッセージすら出ない）という状態だった。通常画面でも置ける／動かせるように統一し、置いた瞬間に「〇〇さんが登校できない時間です」など理由をトーストで警告するようにした。違反内容はチェック結果にも今まで通り載る。",
  ]},
@@ -2118,6 +2125,7 @@ function moveSession(unitId,fromKey,toKey,keep){
     Object.assign(occ.sessions[occ.sessions.length-1], keep.pinned?{pinned:true}:{}, keep.extra.length?{extra:keep.extra}:{}); };
   if(!deskFree(occ,toKey,u.teacherId)){ restore(); toast("その机は同じ時間に埋まっています"); return false; }
   if(!slotHasRoom(occ,toKey)){ restore(); toast(`その時間は教室数（${maxConcurrent()}）で埋まっています`); return false; }
+  if(sameDayCount(occ,u.id,slot.dayId)>=SAMEDAY_MAX){ restore(); toast(`「${u.subject}」はその日にすでに ${SAMEDAY_MAX} 回あります（同じ日に${SAMEDAY_MAX+1}回以上は置けません）`); return false; }
   const vio=canPlace(u,slot,occ)?null:violationReasons(u,toKey); // 条件違反でも移動できる（理由は移動前に算出）
   applyPlace(u,slot,occ);
   const ns=occ.sessions[occ.sessions.length-1];
@@ -2177,6 +2185,7 @@ function placeFromTray(unitId,toKey,force){
   const [w,d,k]=toKey.split("_").map(Number); const slot=slotOf(w,d,k);
   if(!deskFree(occ,toKey,u.teacherId)){ toast("その机は同じ時間に別の授業で埋まっています"); return false; }
   if(!slotHasRoom(occ,toKey)){ toast(`その時間はすでに ${maxConcurrent()} 授業（教室数）で埋まっています`); return false; }
+  if(sameDayCount(occ,u.id,slot.dayId)>=SAMEDAY_MAX){ toast(`「${u.subject}」はその日にすでに ${SAMEDAY_MAX} 回あります（同じ日に${SAMEDAY_MAX+1}回以上は置けません）`); return false; }
   if(lastResult.manual){ // 手動配置: 固定コマとして置く（条件違反でも強行可）
     applyPlace(u,slot,occ); const ns=occ.sessions[occ.sessions.length-1]; ns.pinned=true;
     (u.pins=u.pins||{})[toKey]=true; save();
@@ -2243,7 +2252,7 @@ function violationReasons(u, key){
   const cell=occ.cells[key];
   if(cell){ const dup=u.members.filter(m=>cell.students.has(m)).map(m=>{const s=studentById(m);return s?s.name:m;});
     if(dup.length) out.push(`${dup.join("・")} が同じ時間に別の授業に入っています`); }
-  if(occ.unitDays[u.id] && occ.unitDays[u.id][slot.dayId]) out.push("同じユニットが同じ日にすでにあります（なるべく避けたい）");
+  if(sameDayCount(occ,u.id,slot.dayId)) out.push(`同じユニットが同じ日にすでにあります（なるべく避けたい・同日${SAMEDAY_MAX}回まで）`);
   const tri=u.members.filter(m=>studentPrefersNot(m,key)).map(m=>{const s=studentById(m);return s?s.name:m;});
   if(tri.length) out.push(`${tri.join("・")} が「できれば避けたい（△）」とした時間です`);
   if(slot.koma.avoidMS && unitHasLateNG(u)) out.push("なるべく避けたい遅い時間です");
@@ -2256,7 +2265,7 @@ function computePlaceable(unitId, excludeKey){
   const occ=lastResult.occ; const u=state.units.find(x=>x.id===unitId);
   const set=new Set();
   for(const sl of buildTimeline()){ const key=sl.w+"_"+sl.d+"_"+sl.k;
-    if(key===excludeKey || (deskFree(occ,key,u.teacherId) && slotHasRoom(occ,key))) set.add(key); }
+    if(key===excludeKey || (deskFree(occ,key,u.teacherId) && slotHasRoom(occ,key) && sameDayCount(occ,u.id,sl.dayId)<SAMEDAY_MAX)) set.add(key); }
   return set;
 }
 // valid=理想(条件クリア)は青点線、placeable(手動:机空きだが条件違反)はグレーでも配置可
