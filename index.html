@@ -116,6 +116,8 @@
   .stage-chip .cnt{opacity:.7;font-weight:400}
   .stage-chip .opt{opacity:.85;font-weight:600;color:#2f6df6}
   .stage-chip.optonly{border-style:dashed;opacity:.85}
+  #chipTip{position:fixed;display:none;z-index:60;max-width:340px;background:#fff;border:1px solid var(--line);
+    border-radius:8px;box-shadow:0 6px 20px rgba(20,28,40,.18);padding:8px 10px;font-size:13px;line-height:1.5;pointer-events:none}
   [data-sess]{cursor:grab}
   [data-sess].dragging{opacity:.45}
   [data-sess].hl-unit{box-shadow:0 0 0 2px var(--accent);border-radius:6px}
@@ -1803,6 +1805,7 @@ function renderViolations(res){
 const CHANGELOG=[
  {d:"2026-07-21",h:"グレー枠にも置けるように",items:[
   "編集済みファイルが担当の人から無事届いて反映。",
+  "「待機エリアのチップが最小限なのはいいけど、マウスオーバーで参加メンバーの詳細がその場でわかると楽かな」→ チップにカーソルを乗せると、科目・担当講師・メンバー（学年つき、遅NG/空可/未提出のバッジ入り）・かけもち候補・配置数/必要数・📌固定数を吹き出しで表示。クリックやドラッグを始めると消える。",
   "「待機エリアから配置するときも、そのユニットのメンバーが参加している他のコマがハイライトされるとわかりやすいな」→ 待機エリアのチップを選ぶと、同じユニット（青枠）とメンバーが重なるコマ（オレンジ枠）がグリッド上で光るようにした。置いたコマをクリックしたときと同じ見え方。",
   "「あと、Ctrl+Zをいろんな操作に使えるようになったら嬉しい」→ Ctrl+Z（Macは⌘Z）で直前の操作を取り消せるように。対象は、コマの配置・移動・退避、時間割の生成、手動配置モードの開始、残りを自動配置、選択ユニットの自動配置と解除、履歴の呼び出し・削除、講師/生徒/ユニットの削除、並び替え、シーズンの初期化。25回分さかのぼれる。登校/出勤可能グリッドを開いている間は、そのグリッド用のUndo（従来の「一つ戻す」）が動く。入力欄の編集中は文字入力の取り消しが優先。",
   "「幅を持たせたコマが最大コマ数まで入りきらなかったときも、待機エリアに置いておいてほしい」→ 回数に幅（6〜8など）があるユニットで最大まで届かなかった分を、待機エリアに「+2」の点線チップで表示。必須の未配置「×2」とは見た目で区別され、置かなくても未配置には数えない。最大回数に達するとチップは消え、それ以上は置けない。",
@@ -2201,6 +2204,38 @@ function trayCounts(){
 }
 // 机（講師デスク）がそのコマで空いているか（真に置けない＝物理的に不可）
 function deskFree(occ,key,teacherId){ return !(occ.cells[key]&&occ.cells[key].teachers.has(teacherId)); }
+/* ユニットの中身（担当講師・メンバー・進捗）を1か所で組み立てる。ホバー吹き出しと選択時の表示で共用 */
+function unitDetailHtml(u){
+  const tc=teacherById(u.teacherId);
+  const [bg,bd]=subjColor(u);
+  const placed=lastResult? lastResult.occ.sessions.filter(s=>s.unitId===u.id).length : 0;
+  const rng=uMin(u)===uMax(u)?`${uMin(u)}`:`${uMin(u)}〜${uMax(u)}`;
+  const mem=u.members.map(m=>{ const st=studentById(m); if(!st) return "";
+    const marks=(st.lateNG?'<span title="遅い時間NG" style="color:var(--warn)">遅NG</span>':"")+(st.flexGap?'<span title="空きコマ可（自習）" class="muted">空可</span>':"")+(st.submitted?"":'<span title="時間割 未提出" style="color:var(--bad)">未提出</span>');
+    return `<span style="display:inline-block;margin:1px 6px 1px 0">${st.name}<span class="muted" style="font-size:11px">（${st.grade}）</span>${marks?" "+marks:""}</span>`;
+  }).filter(Boolean).join("");
+  const fx=(state.flex||[]).filter(f=>(f.unitIds||[]).includes(u.id))
+    .map(f=>{ const st=studentById(f.studentId); return st?st.name:""; }).filter(Boolean);
+  const pins=Object.keys(u.pins||{}).length;
+  return `<div style="border-left:3px solid ${bd};background:${bg};padding:4px 8px;border-radius:0 6px 6px 0;margin-bottom:4px">
+      <b>${u.subject}</b> <span class="muted">／ ${tc?tc.name:"?"}${tc&&tc.part?"（バイト）":""}</span></div>
+    <div style="font-size:12px"><span class="muted">メンバー ${u.members.length}人：</span>${mem||'<span class="muted">なし</span>'}</div>
+    ${fx.length?`<div style="font-size:12px;margin-top:2px"><span class="muted">かけもち候補：</span>＋${fx.join("・")}</div>`:""}
+    <div style="font-size:12px;margin-top:3px" class="muted">配置 ${placed} / 必要 ${rng} コマ${pins?`　📌固定 ${pins}`:""}</div>`;
+}
+let chipTipEl=null;
+function showChipTip(chip,unitId){
+  const u=state.units.find(x=>x.id===unitId); if(!u) return;
+  if(!chipTipEl){ chipTipEl=document.createElement("div"); chipTipEl.id="chipTip"; document.body.appendChild(chipTipEl); }
+  chipTipEl.innerHTML=unitDetailHtml(u);
+  chipTipEl.style.display="block";
+  const r=chip.getBoundingClientRect(), t=chipTipEl.getBoundingClientRect();
+  chipTipEl.style.left=Math.max(8, Math.min(r.left, window.innerWidth-t.width-8))+"px";
+  // 下に入りきらないときはチップの上に出す
+  const below=r.bottom+6, fits=below+t.height<=window.innerHeight-8;
+  chipTipEl.style.top=(fits? below : Math.max(8, r.top-t.height-6))+"px";
+}
+function hideChipTip(){ if(chipTipEl) chipTipEl.style.display="none"; }
 function renderTray(){
   const tray=document.getElementById("stageTray");
   const fb=document.getElementById("fillRestBtn"); if(fb) fb.style.display=(lastResult&&lastResult.manual)?"":"none";
@@ -2397,7 +2432,13 @@ function afterManualEdit(){
     }
     clearSel();
   });
+  tray.addEventListener("mouseover",e=>{ const chip=e.target.closest("[data-tray-unit]");
+    if(chip) showChipTip(chip,chip.dataset.trayUnit); });
+  tray.addEventListener("mouseout",e=>{ const chip=e.target.closest("[data-tray-unit]");
+    if(chip && !chip.contains(e.relatedTarget)) hideChipTip(); });
+  window.addEventListener("scroll",hideChipTip,{passive:true});
   tray.addEventListener("click",e=>{
+    hideChipTip();
     const chip=e.target.closest("[data-tray-unit]");
     if(chip){
       const uid=chip.dataset.trayUnit;
@@ -2417,7 +2458,7 @@ function afterManualEdit(){
   });
   tray.addEventListener("dragstart",e=>{
     const chip=e.target.closest("[data-tray-unit]"); if(!chip||!lastResult){ e.preventDefault(); return; }
-    clearSel();
+    hideChipTip(); clearSel();
     const uid=chip.dataset.trayUnit;
     e.dataTransfer.setData("text/plain","tray:"+uid); e.dataTransfer.effectAllowed="move";
     dragValid=computeValid(uid,null);
