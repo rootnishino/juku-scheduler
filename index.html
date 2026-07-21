@@ -114,6 +114,8 @@
   .stage-chip{cursor:grab;border-radius:6px;padding:3px 9px;font-size:12px;font-weight:600;border:1px solid var(--line);background:#fff;user-select:none}
   .stage-chip.sel{box-shadow:0 0 0 2px var(--accent)}
   .stage-chip .cnt{opacity:.7;font-weight:400}
+  .stage-chip .opt{opacity:.85;font-weight:600;color:#2f6df6}
+  .stage-chip.optonly{border-style:dashed;opacity:.85}
   [data-sess]{cursor:grab}
   [data-sess].dragging{opacity:.45}
   [data-sess].hl-unit{box-shadow:0 0 0 2px var(--accent);border-radius:6px}
@@ -1794,6 +1796,7 @@ function renderViolations(res){
 const CHANGELOG=[
  {d:"2026-07-21",h:"グレー枠にも置けるように",items:[
   "編集済みファイルが担当の人から無事届いて反映。",
+  "「幅を持たせたコマが最大コマ数まで入りきらなかったときも、待機エリアに置いておいてほしい」→ 回数に幅（6〜8など）があるユニットで最大まで届かなかった分を、待機エリアに「+2」の点線チップで表示。必須の未配置「×2」とは見た目で区別され、置かなくても未配置には数えない。最大回数に達するとチップは消え、それ以上は置けない。",
   "「ダッシュボードの講師統計を、生成したスケジュールに合わせて生成・結果タブにも表示できる？コマを新しく置くたびに反映してほしい」→ 生成・結果タブに「講師統計（いまの時間割）」を追加。配置コマ（置いた数/必要数）・延べ人数・出勤日数・空きコマ・1コマ出勤日を表示し、コマを動かすたびに即座に更新される。不足は赤、バイトの空きコマ・1コマ出勤日は黄色で強調。",
   "「同じ日に2件をソフト違反にしたけど、3件以上は禁止にして」→ 上限を追加。2回目までは置けて黄色チップの警告、3回目は物理的にブロック（候補マスにも出ない）。📌固定を3つ付けるなど別経路で3回になった場合は「同日の回数オーバー」として赤で要対応表示。",
   "「同じ日に複数配置のエラーもソフト扱いにして」→ 「同じユニットは1日1回まで」をハード制約からソフト違反に格下げ。手動でも自動でも同じ日に2回置けるようになり、チェック結果には「同じユニットが同日に複数回」として黄色チップで表示される。自動生成は今まで通り1日1回を優先し、それだと置ききれないときだけ重ねる（ペナルティ2.0）。",
@@ -2159,13 +2162,23 @@ function moveSession(unitId,fromKey,toKey,keep){
 }
 /* ---------- 待機エリア（未配置・退避コマ置き場） ---------- */
 // lastResult.staged = [{unitId, keep:{pinned,extra}}] 手動退避分。エンジン未配置は lastResult.unplaced。
+/* 待機エリアの残数。need=最低回数までの必須分、opt=最大回数までの任意分（幅を持たせたユニット用） */
 function trayCounts(){
-  if(lastResult.manual){ // 手動配置モード: 残り = 目標コマ数 − 配置済み(=固定)数
-    const c={}; state.units.forEach(u=>{ const rem=uMin(u)-Object.keys(u.pins||{}).length; if(rem>0) c[u.id]=rem; }); return c;
+  const c={}; const put=(id)=>c[id]=c[id]||{need:0,opt:0};
+  if(lastResult.manual){ // 手動配置モード: 配置済み=📌固定の数
+    state.units.forEach(u=>{ const p=Object.keys(u.pins||{}).length;
+      const need=Math.max(0,uMin(u)-p), opt=Math.max(0,uMax(u)-Math.max(p,uMin(u)));
+      if(need||opt){ put(u.id); c[u.id].need=need; c[u.id].opt=opt; } });
+    return c;
   }
-  const c={};
-  (lastResult.unplaced||[]).forEach(x=>{ c[x.unitId]=(c[x.unitId]||0)+x.remaining; });
-  (lastResult.staged||[]).forEach(x=>{ c[x.unitId]=(c[x.unitId]||0)+1; });
+  (lastResult.unplaced||[]).forEach(x=>{ put(x.unitId).need; c[x.unitId].need+=x.remaining; });
+  (lastResult.staged||[]).forEach(x=>{ put(x.unitId); c[x.unitId].need+=1; });
+  const placed={}; lastResult.occ.sessions.forEach(s=>placed[s.unitId]=(placed[s.unitId]||0)+1);
+  state.units.forEach(u=>{
+    const acc=(placed[u.id]||0)+((c[u.id]&&c[u.id].need)||0); // 配置済み＋待機中の必須分
+    const opt=Math.max(0, uMax(u)-Math.max(acc,uMin(u)));
+    if(opt){ put(u.id); c[u.id].opt=opt; }
+  });
   return c;
 }
 // 机（講師デスク）がそのコマで空いているか（真に置けない＝物理的に不可）
@@ -2176,15 +2189,18 @@ function renderTray(){
   if(!lastResult||resultView==="person"){ tray.style.display="none"; return; }
   tray.style.display="flex";
   const c=trayCounts();
+  let hasOpt=false;
   const chips=Object.entries(c).map(([uid,n])=>{
     const u=state.units.find(x=>x.id===uid); if(!u) return "";
     const [bg,bd]=subjColor(u);
     const sel=selInfo&&selInfo.type==="tray"&&selInfo.unitId===uid?" sel":"";
-    return `<span class="stage-chip${sel}" draggable="true" data-tray-unit="${uid}" style="background:${bg};border-left:3px solid ${bd}">${shortCode(u.subject)} <span class="cnt">×${n}</span></span>`;
+    const optOnly=!n.need&&n.opt; if(n.opt) hasOpt=true;
+    const cnt=(n.need?`×${n.need}`:"")+(n.opt?`<span class="opt" title="最大回数までの追加分（任意）">${n.need?" ":""}+${n.opt}</span>`:"");
+    return `<span class="stage-chip${sel}${optOnly?" optonly":""}" draggable="true" data-tray-unit="${uid}" style="background:${bg};border-left:3px solid ${bd}">${shortCode(u.subject)} <span class="cnt">${cnt}</span></span>`;
   }).join("");
   tray.innerHTML=`<b style="font-size:12px">🧺 待機エリア</b>`+
     (chips||`<span class="muted" style="font-size:12px">未配置・退避コマはありません</span>`)+
-    `<span class="muted" style="font-size:11px;margin-left:auto">チップをクリック/ドラッグ→マスへ配置｜グリッドのコマを選択してここをクリック（またはドラッグ）で退避</span>`;
+    `<span class="muted" style="font-size:11px;margin-left:auto">チップをクリック/ドラッグ→マスへ配置｜グリッドのコマを選択してここをクリック（またはドラッグ）で退避${hasOpt?"｜<b>+n</b>＝最大回数までの追加分（置かなくてもOK）":""}</span>`;
 }
 // トレイ→グリッドへ1コマ配置（手動退避分を優先して取り出す）。force=true で条件違反でも強行（手動モード）
 function placeFromTray(unitId,toKey,force){
@@ -2204,8 +2220,11 @@ function placeFromTray(unitId,toKey,force){
   if(si>=0){ keep=lastResult.staged[si].keep||keep; lastResult.staged.splice(si,1); }
   else{
     const ue=(lastResult.unplaced||[]).find(x=>x.unitId===unitId&&x.remaining>0);
-    if(!ue){ toast("待機分がありません"); return false; }
-    ue.remaining--; if(ue.remaining<=0) lastResult.unplaced=lastResult.unplaced.filter(x=>x!==ue);
+    if(ue){ ue.remaining--; if(ue.remaining<=0) lastResult.unplaced=lastResult.unplaced.filter(x=>x!==ue); }
+    else{ // 最低回数はすでに満たしている → 最大回数までの追加配置として置く
+      const already=occ.sessions.filter(x=>x.unitId===unitId).length;
+      if(already>=uMax(u)){ toast(`「${u.subject}」はすでに最大回数（${uMax(u)}コマ）です`); return false; }
+    }
   }
   applyPlace(u,slot,occ);
   const ns=occ.sessions[occ.sessions.length-1];
