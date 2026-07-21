@@ -1770,6 +1770,10 @@ function renderViolations(res){
 }
 /* 更新履歴（新しい順。開発日誌スタイル。リリース時にその日のエントリへ追記する） */
 const CHANGELOG=[
+ {d:"2026-07-21",h:"グレー枠にも置けるように",items:[
+  "編集済みファイルが担当の人から無事届いて反映。",
+  "「待機エリアのコマを灰色の枠に入れることができないのはなぜ？」→ 調べたら、グレー枠に強行配置できるのは手動配置モードのときだけで、通常の生成結果画面ではクリックしても無反応（しかもメッセージすら出ない）という状態だった。通常画面でも置ける／動かせるように統一し、置いた瞬間に「〇〇さんが登校できない時間です」など理由をトーストで警告するようにした。違反内容はチェック結果にも今まで通り載る。",
+ ]},
  {d:"2026-07-19",h:"履歴を日誌化",items:[
   "「もっと細かく、ラフな感じのレポ調で頼む」→ この開発日誌スタイルに全面書き直し。",
  ]},
@@ -2081,7 +2085,7 @@ function beginDrag(el){
   applyPlace(u,slotOf(fw,fd,fk),occ);
   Object.assign(occ.sessions[occ.sessions.length-1], keep.pinned?{pinned:true}:{}, keep.extra.length?{extra:keep.extra}:{});
   dragValid.add(fromKey); // 元の位置は常にOK（＝キャンセル）
-  dragPlaceable=lastResult.manual?computePlaceable(unitId,fromKey):null;
+  dragPlaceable=computePlaceable(unitId,fromKey);
   dragInfo={unitId,fromKey,keep,teacherId:u.teacherId};
   paintTargets(dragValid,u.teacherId,dragPlaceable);
   el.classList.add("dragging");
@@ -2103,7 +2107,7 @@ function moveSession(unitId,fromKey,toKey,keep){
     Object.assign(occ.sessions[occ.sessions.length-1], keep.pinned?{pinned:true}:{}, keep.extra.length?{extra:keep.extra}:{}); };
   if(!deskFree(occ,toKey,u.teacherId)){ restore(); toast("その机は同じ時間に埋まっています"); return false; }
   if(!slotHasRoom(occ,toKey)){ restore(); toast(`その時間は教室数（${maxConcurrent()}）で埋まっています`); return false; }
-  if(!lastResult.manual && !canPlace(u,slot,occ)){ restore(); toast("そこには置けません（条件を満たしません）"); return false; }
+  const vio=canPlace(u,slot,occ)?null:violationReasons(u,toKey); // 条件違反でも移動できる（理由は移動前に算出）
   applyPlace(u,slot,occ);
   const ns=occ.sessions[occ.sessions.length-1];
   if(lastResult.manual){ ns.pinned=true; (u.pins=u.pins||{}); delete u.pins[fromKey]; u.pins[toKey]=true; save(); }
@@ -2124,6 +2128,7 @@ function moveSession(unitId,fromKey,toKey,keep){
     (lastResult.flexIssues=lastResult.flexIssues||[]).push({msg:`手動移動により、${names} のかけもち受講がこのコマから外れました（移動先に来られない・または同時刻に別授業のため）。受講回数が不足している可能性があります。`});
     toast(`かけもちの ${names} は移動先に入れないため外しました（チェック結果参照）`);
   }
+  if(vio) warnViolations(vio);
   return true;
 }
 /* ---------- 待機エリア（未配置・退避コマ置き場） ---------- */
@@ -2166,7 +2171,7 @@ function placeFromTray(unitId,toKey,force){
     (u.pins=u.pins||{})[toKey]=true; save();
     return true;
   }
-  if(!force && !canPlace(u,slot,occ)){ toast("そこには置けません（条件を満たしません）"); return false; }
+  const vio=canPlace(u,slot,occ)?null:violationReasons(u,toKey); // 条件違反でも置く（理由は配置前に算出して警告）
   let keep={pinned:false,extra:[]};
   const si=(lastResult.staged||[]).findIndex(x=>x.unitId===unitId);
   if(si>=0){ keep=lastResult.staged[si].keep||keep; lastResult.staged.splice(si,1); }
@@ -2182,6 +2187,7 @@ function placeFromTray(unitId,toKey,force){
     if(kept.length) ns.extra=kept;
     if(kept.length<keep.extra.length) toast("かけもちの一部は配置先に入れないため外れました");
   }
+  if(vio) warnViolations(vio);
   return true;
 }
 // グリッド→トレイへ退避（📌固定は解除される）
@@ -2215,6 +2221,26 @@ function computeValid(unitId, excludeKey){
   return valid;
 }
 // 手動モードで「グレーだが置ける」机（デスク空き）の集合
+/* 条件違反のまま配置したときの警告文を作る（物理的に不可能なもの＝机・教室は別途ブロック済み） */
+function violationReasons(u, key){
+  const [w,d,k]=key.split("_").map(Number); const slot=slotOf(w,d,k);
+  const occ=lastResult.occ, out=[];
+  const ng=u.members.filter(m=>!studentCanAttend(m,key)).map(m=>{const s=studentById(m);return s?s.name:m;});
+  if(ng.length) out.push(`${ng.join("・")} が登校できない時間です`);
+  if(!teacherAvailable(u.teacherId,key)){ const t=teacherById(u.teacherId); out.push(`${t?t.name:"担当講師"}が出勤できない時間です`); }
+  if(slot.koma.forbidMS && unitHasLateNG(u)) out.push("中1・中2が入れない時間です");
+  const cell=occ.cells[key];
+  if(cell){ const dup=u.members.filter(m=>cell.students.has(m)).map(m=>{const s=studentById(m);return s?s.name:m;});
+    if(dup.length) out.push(`${dup.join("・")} が同じ時間に別の授業に入っています`); }
+  if(occ.unitDays[u.id] && occ.unitDays[u.id].has(slot.dayId)) out.push("同じユニットが同じ日にすでにあります");
+  const tri=u.members.filter(m=>studentPrefersNot(m,key)).map(m=>{const s=studentById(m);return s?s.name:m;});
+  if(tri.length) out.push(`${tri.join("・")} が「できれば避けたい（△）」とした時間です`);
+  if(slot.koma.avoidMS && unitHasLateNG(u)) out.push("なるべく避けたい遅い時間です");
+  return out;
+}
+function warnViolations(r){
+  if(r&&r.length) toast("⚠ "+r.join(" ／ ")+"（チェック結果にも表示されます）");
+}
 function computePlaceable(unitId, excludeKey){
   const occ=lastResult.occ; const u=state.units.find(x=>x.id===unitId);
   const set=new Set();
@@ -2243,7 +2269,7 @@ function selectSess(sessKey){
   const s=lastResult.occ.sessions[idx];
   selInfo={type:"sess",sessKey,unitId,fromKey,keep:{pinned:!!s.pinned,extra:(s.extra||[]).slice()},
     valid:computeValid(unitId,fromKey),
-    placeable:lastResult.manual?computePlaceable(unitId,fromKey):null,
+    placeable:computePlaceable(unitId,fromKey),
     teacherId:state.units.find(x=>x.id===unitId).teacherId};
   toggleHighlight(sessKey); hlSess=sessKey;
   paintTargets(selInfo.valid, selInfo.teacherId, selInfo.placeable);
@@ -2253,7 +2279,7 @@ function selectSess(sessKey){
 function selectTray(unitId){
   clearSel();
   selInfo={type:"tray",unitId,valid:computeValid(unitId,null),
-    placeable:lastResult.manual?computePlaceable(unitId,null):null,
+    placeable:computePlaceable(unitId,null),
     teacherId:state.units.find(x=>x.id===unitId).teacherId};
   paintTargets(selInfo.valid, selInfo.teacherId, selInfo.placeable);
   renderTray(); // selクラス反映
@@ -2327,7 +2353,7 @@ function afterManualEdit(){
     const uid=chip.dataset.trayUnit;
     e.dataTransfer.setData("text/plain","tray:"+uid); e.dataTransfer.effectAllowed="move";
     dragValid=computeValid(uid,null);
-    dragPlaceable=lastResult.manual?computePlaceable(uid,null):null;
+    dragPlaceable=computePlaceable(uid,null);
     dragInfo={unitId:uid,fromKey:null,keep:{pinned:false,extra:[]},teacherId:state.units.find(x=>x.id===uid).teacherId};
     paintTargets(dragValid,dragInfo.teacherId,dragPlaceable);
   });
