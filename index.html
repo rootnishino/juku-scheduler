@@ -1540,6 +1540,21 @@ function assignFlex(occ){
   }
   return issues;
 }
+/* いまの配置（各コマの extra）から、かけもち受講の過不足だけを点検する。
+   assignFlex と違って割り当てを変更しないので、履歴の呼び出しや手動編集後の再チェックに使う。 */
+function checkFlexIssues(occ){
+  const issues=[];
+  for(const f of (state.flex||[])){
+    const st=studentById(f.studentId); if(!st) continue;
+    if(!(f.unitIds||[]).length){ issues.push({msg:`${st.name} のかけもち受講：対象ユニットが未選択です。`}); continue; }
+    const got=occ.sessions.filter(s=>f.unitIds.includes(s.unitId)&&(s.extra||[]).includes(f.studentId)).length;
+    if(got<f.count){
+      const names=f.unitIds.map(id=>{const u=state.units.find(x=>x.id===id);return u?u.subject:"?";}).join("・");
+      issues.push({msg:`${st.name} のかけもち受講（${names}）：${f.count}回中 ${got}回しか入っていません。対象ユニットを増やす・回数を減らす・登校可能時間を見直す、のいずれかが必要です。`});
+    }
+  }
+  return issues;
+}
 function removeLast(occ){ removePlace(occ.sessions.length-1,occ); }
 
 function localSearch(occ,timeline,iters){
@@ -1805,6 +1820,7 @@ function renderViolations(res){
 const CHANGELOG=[
  {d:"2026-07-21",h:"グレー枠にも置けるように",items:[
   "編集済みファイルが担当の人から無事届いて反映。",
+  "「保存した履歴を表示すると、かけもちコマが埋まっていないアラートが消えちゃうんだけど」→ バグ修正。かけもちの割り当て自体は履歴に保存されていたが、不足の警告文は保存対象外で空になっていた。保存された配置から過不足を数え直すようにして、履歴を呼び出しても警告が正しく出るように。ついでに、コマを手で動かした後も同じ点検が走るようにして、古い警告が残ったり消えたりしないよう直した。",
   "「待機エリアのチップが最小限なのはいいけど、マウスオーバーで参加メンバーの詳細がその場でわかると楽かな」→ チップにカーソルを乗せると、科目・担当講師・メンバー（学年つき、遅NG/空可/未提出のバッジ入り）・かけもち候補・配置数/必要数・📌固定数を吹き出しで表示。クリックやドラッグを始めると消える。",
   "「待機エリアから配置するときも、そのユニットのメンバーが参加している他のコマがハイライトされるとわかりやすいな」→ 待機エリアのチップを選ぶと、同じユニット（青枠）とメンバーが重なるコマ（オレンジ枠）がグリッド上で光るようにした。置いたコマをクリックしたときと同じ見え方。",
   "「あと、Ctrl+Zをいろんな操作に使えるようになったら嬉しい」→ Ctrl+Z（Macは⌘Z）で直前の操作を取り消せるように。対象は、コマの配置・移動・退避、時間割の生成、手動配置モードの開始、残りを自動配置、選択ユニットの自動配置と解除、履歴の呼び出し・削除、講師/生徒/ユニットの削除、並び替え、シーズンの初期化。25回分さかのぼれる。登校/出勤可能グリッドを開いている間は、そのグリッド用のUndo（従来の「一つ戻す」）が動く。入力欄の編集中は文字入力の取り消しが優先。",
@@ -2400,6 +2416,7 @@ function reassignFlex(occ){
 }
 function afterManualEdit(){
   if(lastResult.manual) lastResult.flexIssues=reassignFlex(lastResult.occ); // 手動で置いたコマにも かけもち を反映
+  else lastResult.flexIssues=checkFlexIssues(lastResult.occ);               // 編集後の過不足を点検し直す
   const needMin=state.units.reduce((a,u)=>a+uMin(u),0);
   document.getElementById("runNote").textContent="手動編集済み（★履歴に保存できます）";
   renderStats(lastResult,needMin,lastResult.occ.sessions.length);
@@ -2613,6 +2630,7 @@ function viewHistory(id){
   pushUndo("履歴の呼び出し");
   const occ=occFromSessions(h.sessions);
   lastResult={occ, unplaced:(h.unplaced||[]).map(x=>({unitId:x.unitId,remaining:x.remaining})), pinIssues:[], staged:[]};
+  lastResult.flexIssues=checkFlexIssues(occ); // 警告文は履歴に保存されないので配置から復元する
   const need=state.units.reduce((a,u)=>a+uMin(u),0);
   document.getElementById("runNote").textContent=`「${h.label}」を表示中`;
   renderStats(lastResult, need, occ.sessions.length);
