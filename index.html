@@ -870,7 +870,7 @@ function renderStudents(){
   const sum=document.getElementById("submitSummary");
   if(sum) sum.innerHTML=state.students.length?`時間割提出：<b>${done} / ${state.students.length}</b> 人 ${done<state.students.length?`<span class="tag" style="background:#fff4e0;color:var(--warn)">未提出 ${state.students.length-done}人</span>`:'<span class="tag reg">全員提出済み 🎉</span>'}`:"";
   const dup=dupAbbrIds();
-  t.innerHTML="<tr><th>氏名</th><th title=\"時間割の各コマに表示する1文字。空欄なら氏名の先頭文字を使います。他の生徒と重複すると区別がつかないため、その場合は下の名前の頭文字などに変えてください\">表示<br>1文字</th><th>学年</th><th>時間割提出</th><th>遅い時間NG</th><th>空き可(自習)</th><th>登校可能</th><th>所属ユニット</th><th></th></tr>";
+  t.innerHTML="<tr><th>氏名（一覧用の略称）</th><th title=\"配布する個人時間割に印刷する本名フルネーム。空欄なら氏名をそのまま使います\">本名フルネーム</th><th title=\"時間割の各コマに表示する1文字。空欄なら氏名の先頭文字を使います。他の生徒と重複すると区別がつかないため、その場合は下の名前の頭文字などに変えてください\">表示<br>1文字</th><th>学年</th><th>時間割提出</th><th>遅い時間NG</th><th>空き可(自習)</th><th>登校可能</th><th>所属ユニット</th><th></th></tr>";
   state.students.forEach((s,idx)=>{
     const av=state.availability[s.id]||{};
     const cnt=Object.keys(av).length;
@@ -878,7 +878,8 @@ function renderStudents(){
     const isDup=dup.has(s.id);
     const tr=document.createElement("tr");
     if(!s.submitted) tr.style.background="#fffaf0";
-    tr.innerHTML=`<td><input type="text" value="${s.name}">${s.submitted?"":' <span class="tag" style="background:#fff4e0;color:var(--warn)">未提出</span>'}</td>
+    tr.innerHTML=`<td><input type="text" class="nm" value="${s.name}">${s.submitted?"":' <span class="tag" style="background:#fff4e0;color:var(--warn)">未提出</span>'}</td>
+      <td><input type="text" class="full" value="${s.fullname||""}" placeholder="${s.name||""}" style="width:110px"></td>
       <td style="text-align:center"><input type="text" class="abbr" maxlength="1" value="${s.abbr||""}" placeholder="${(s.name||"")[0]||""}" style="width:34px;text-align:center${isDup?";border-color:var(--bad);background:#fdf1f0":""}" title="${isDup?"表示1文字が他の生徒と重複しています":"時間割に出る1文字"}">${isDup?' <span class="tag" style="background:#fdf1f0;color:var(--bad)">重複</span>':""}</td>
       <td><select>${GRADES.map(g=>`<option ${g===s.grade?"selected":""}>${g}</option>`).join("")}</select></td>
       <td style="text-align:center"><input type="checkbox" class="subm" ${s.submitted?"checked":""}></td>
@@ -892,7 +893,8 @@ function renderStudents(){
         <button class="btn small" ${idx===0?"disabled":""} onclick="moveStudent(${idx},-1)">↑</button>
         <button class="btn small" ${idx===state.students.length-1?"disabled":""} onclick="moveStudent(${idx},1)">↓</button>
         <button class="btn small danger" onclick="delStudent('${s.id}')">削除</button></td>`;
-    tr.querySelector("input[type=text]").onchange=e=>{s.name=e.target.value;save();renderStudents();renderUnits();};
+    tr.querySelector("input.nm").onchange=e=>{s.name=e.target.value;save();renderStudents();renderUnits();};
+    tr.querySelector("input.full").onchange=e=>{s.fullname=e.target.value.trim();save();};
     tr.querySelector("input.abbr").onchange=e=>{s.abbr=e.target.value.trim();save();renderStudents();};
     tr.querySelector("select").onchange=e=>{s.grade=e.target.value;save();};
     tr.querySelector("input.subm").onchange=e=>{s.submitted=e.target.checked;save();renderStudents();};
@@ -1838,6 +1840,7 @@ const CHANGELOG=[
   "「あと、Ctrl+Zをいろんな操作に使えるようになったら嬉しい」→ Ctrl+Z（Macは⌘Z）で直前の操作を取り消せるように。対象は、コマの配置・移動・退避、時間割の生成、手動配置モードの開始、残りを自動配置、選択ユニットの自動配置と解除、履歴の呼び出し・削除、講師/生徒/ユニットの削除、並び替え、シーズンの初期化。25回分さかのぼれる。登校/出勤可能グリッドを開いている間は、そのグリッド用のUndo（従来の「一つ戻す」）が動く。入力欄の編集中は文字入力の取り消しが優先。",
   "「幅を持たせたコマが最大コマ数まで入りきらなかったときも、待機エリアに置いておいてほしい」→ 回数に幅（6〜8など）があるユニットで最大まで届かなかった分を、待機エリアに「+2」の点線チップで表示。必須の未配置「×2」とは見た目で区別され、置かなくても未配置には数えない。最大回数に達するとチップは消え、それ以上は置けない。",
   "「ダッシュボードの講師統計を、生成したスケジュールに合わせて生成・結果タブにも表示できる？コマを新しく置くたびに反映してほしい」→ 生成・結果タブに「講師統計（いまの時間割）」を追加。配置コマ（置いた数/必要数）・延べ人数・出勤日数・空きコマ・1コマ出勤日を表示し、コマを動かすたびに即座に更新される。不足は赤、バイトの空きコマ・1コマ出勤日は黄色で強調。",
+  "「毎回CSVを編集するのは面倒だから、本名フルネームと略字をアプリで管理できるようにして。今のCSVの情報もアプリに入れておいて」→ 生徒タブに「本名フルネーム」欄を追加（個人時間割はこれを印刷。空欄なら氏名を使う）。エクスポータは本名を ①アプリ登録 ②CSV ③氏名 の順で使う。現在のCSVの本名39人分は取り込み済みのJSONを用意し、インポートで反映。以後CSVは不要。",
   "「全体時間割の略字で、頭文字が同じ生徒（山田/山田/山口、入江/入江、櫻井/櫻井など）が区別できない。アプリに本名と表示用1文字を登録するUIにしては」→ 生徒タブに「表示1文字」欄を追加。空欄なら氏名の先頭文字を自動使用、他の生徒と被る場合は行に「重複」バッジを出して手動指定を促す。全体時間割の各コマ表示もこの1文字を使う。エクスポータ(全体/個人/教室別)もこの設定を最優先で読む。",
   "「同じ日に2件をソフト違反にしたけど、3件以上は禁止にして」→ 上限を追加。2回目までは置けて黄色チップの警告、3回目は物理的にブロック（候補マスにも出ない）。📌固定を3つ付けるなど別経路で3回になった場合は「同日の回数オーバー」として赤で要対応表示。",
   "「同じ日に複数配置のエラーもソフト扱いにして」→ 「同じユニットは1日1回まで」をハード制約からソフト違反に格下げ。手動でも自動でも同じ日に2回置けるようになり、チェック結果には「同じユニットが同日に複数回」として黄色チップで表示される。自動生成は今まで通り1日1回を優先し、それだと置ききれないときだけ重ねる（ペナルティ2.0）。",
