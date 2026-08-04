@@ -490,8 +490,16 @@ function fillStudentFull(id){ const av={}; for(let w=0;w<state.weeks;w++) state.
 
 // 空のシーズン（設定・コマは既定、生徒/講師/ユニットは空）
 function blankState(){ return {weeks:5,startDate:"2026-07-26",openDows:[1,2,3,4,5,6],komas:sampleState().komas,teachers:[],students:[],availability:{},units:[],teacherAvailability:{},history:[],flex:[],defaults:{studentGrade:"中1",studentAvailFull:true,studentLateNG:"auto",studentFlexGap:"auto",teacherPart:true,unitKomaMin:8,unitKomaMax:8,flexCount:8}}; }
+/* 氏名(区切り無し)を名字/名前に自動分割。既定は名字2文字、以下だけ例外。
+   ここに載っていない1文字/3文字名字が来たら、生徒編集で手直しすればOK。 */
+const SURNAME_LEN={ "三ツ井":3, "篠":1 };
+function splitName(name){ name=(name||"").trim();
+  for(const k in SURNAME_LEN){ if(name.startsWith(k)) return [k, name.slice(k.length)]; }
+  return [name.slice(0,2), name.slice(2)];
+}
 function migrateData(d){ if(!d.startDate)d.startDate="2026-07-26"; if(!d.teacherAvailability)d.teacherAvailability={}; if(!d.history)d.history=[];
-  (d.students||[]).forEach(s=>{ if(s.lateNG===undefined)s.lateNG=isMS12(s.grade); if(s.flexGap===undefined)s.flexGap=isExam(s.grade); if(s.submitted===undefined)s.submitted=false; });
+  (d.students||[]).forEach(s=>{ if(s.lateNG===undefined)s.lateNG=isMS12(s.grade); if(s.flexGap===undefined)s.flexGap=isExam(s.grade); if(s.submitted===undefined)s.submitted=false;
+    if(!s.sei||!s.mei){ const [se,me]=splitName(s.name); if(!s.sei)s.sei=se; if(!s.mei)s.mei=me; } });
   (d.units||[]).forEach(u=>{ if(!u.pins)u.pins={};
     if(u.komaMin===undefined) u.komaMin=u.komaCount!==undefined?u.komaCount:8;
     if(u.komaMax===undefined) u.komaMax=Math.max(u.komaMin, u.komaCount!==undefined?u.komaCount:8);
@@ -870,7 +878,7 @@ function renderStudents(){
   const sum=document.getElementById("submitSummary");
   if(sum) sum.innerHTML=state.students.length?`時間割提出：<b>${done} / ${state.students.length}</b> 人 ${done<state.students.length?`<span class="tag" style="background:#fff4e0;color:var(--warn)">未提出 ${state.students.length-done}人</span>`:'<span class="tag reg">全員提出済み 🎉</span>'}`:"";
   const dup=dupAbbrIds();
-  t.innerHTML="<tr><th title=\"個人時間割にはこの氏名（フルネーム）がそのまま印刷されます\">氏名（フルネーム）</th><th title=\"全体時間割など一覧に表示する1文字。空欄なら氏名の先頭文字を使います。他の生徒と重複すると区別がつかないため、その場合は下の名前の頭文字などに変えてください\">一覧表示<br>1文字</th><th>学年</th><th>時間割提出</th><th>遅い時間NG</th><th>空き可(自習)</th><th>登校可能</th><th>所属ユニット</th><th></th></tr>";
+  t.innerHTML="<tr><th title=\"名字と名前を分けて入力します。個人時間割にはフルネーム（名字+名前）が印刷され、教室別は基本この名字だけを表示します\">名字 / 名前</th><th title=\"全体時間割など一覧に表示する1文字。空欄なら氏名の先頭文字を使います。他の生徒と重複すると区別がつかないため、その場合は下の名前の頭文字などに変えてください\">一覧表示<br>1文字</th><th>学年</th><th>時間割提出</th><th>遅い時間NG</th><th>空き可(自習)</th><th>登校可能</th><th>所属ユニット</th><th></th></tr>";
   state.students.forEach((s,idx)=>{
     const av=state.availability[s.id]||{};
     const cnt=Object.keys(av).length;
@@ -878,7 +886,7 @@ function renderStudents(){
     const isDup=dup.has(s.id);
     const tr=document.createElement("tr");
     if(!s.submitted) tr.style.background="#fffaf0";
-    tr.innerHTML=`<td><input type="text" class="nm" value="${s.name}">${s.submitted?"":' <span class="tag" style="background:#fff4e0;color:var(--warn)">未提出</span>'}</td>
+    tr.innerHTML=`<td><input type="text" class="sei" value="${s.sei||""}" placeholder="名字" style="width:70px" title="名字（教室別に表示）"><input type="text" class="mei" value="${s.mei||""}" placeholder="名前" style="width:70px" title="名前（かぶり時に頭1文字を付加）">${s.submitted?"":' <span class="tag" style="background:#fff4e0;color:var(--warn)">未提出</span>'}</td>
       <td style="text-align:center"><input type="text" class="abbr" maxlength="1" value="${s.abbr||""}" placeholder="${(s.name||"")[0]||""}" style="width:34px;text-align:center${isDup?";border-color:var(--bad);background:#fdf1f0":""}" title="${isDup?"一覧表示の1文字が他の生徒と重複しています":"一覧に出る1文字"}">${isDup?' <span class="tag" style="background:#fdf1f0;color:var(--bad)">重複</span>':""}</td>
       <td><select>${GRADES.map(g=>`<option ${g===s.grade?"selected":""}>${g}</option>`).join("")}</select></td>
       <td style="text-align:center"><input type="checkbox" class="subm" ${s.submitted?"checked":""}></td>
@@ -892,7 +900,9 @@ function renderStudents(){
         <button class="btn small" ${idx===0?"disabled":""} onclick="moveStudent(${idx},-1)">↑</button>
         <button class="btn small" ${idx===state.students.length-1?"disabled":""} onclick="moveStudent(${idx},1)">↓</button>
         <button class="btn small danger" onclick="delStudent('${s.id}')">削除</button></td>`;
-    tr.querySelector("input.nm").onchange=e=>{s.name=e.target.value;save();renderStudents();renderUnits();};
+    const syncName=()=>{ s.name=((s.sei||"")+(s.mei||"")).trim()||s.name; };
+    tr.querySelector("input.sei").onchange=e=>{s.sei=e.target.value.trim();syncName();save();renderStudents();renderUnits();};
+    tr.querySelector("input.mei").onchange=e=>{s.mei=e.target.value.trim();syncName();save();renderStudents();renderUnits();};
     tr.querySelector("input.abbr").onchange=e=>{s.abbr=e.target.value.trim();save();renderStudents();};
     tr.querySelector("select").onchange=e=>{s.grade=e.target.value;save();};
     tr.querySelector("input.subm").onchange=e=>{s.submitted=e.target.checked;save();renderStudents();};
@@ -905,7 +915,7 @@ function addStudent(){
   const id=uid("s"); const d=DEF(); const g=d.studentGrade||"中1";
   const lateNG = d.studentLateNG==="on"?true : d.studentLateNG==="off"?false : isMS12(g);
   const flexGap = d.studentFlexGap==="on"?true : d.studentFlexGap==="off"?false : isExam(g);
-  state.students.push({id,name:"新しい生徒",grade:g,lateNG,flexGap,submitted:false});
+  state.students.push({id,name:"新しい生徒",sei:"新しい",mei:"生徒",grade:g,lateNG,flexGap,submitted:false});
   if(d.studentAvailFull) fillStudentFull(id); else state.availability[id]={};
   save(); renderStudents();
 }
