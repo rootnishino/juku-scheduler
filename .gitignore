@@ -4,3 +4,10 @@
 *.pdf
 .DS_Store
 __pycache__/
+
+# 配布用Excelの書き出しスクリプトは主要ファイルなので管理する。
+# 生徒の実データ（*.json / *.xlsx / 生徒情報.csv / 生徒名補完.json）は除外のまま。
+!export_personal.py
+!export_classroom.py
+!export_to_template.py
+生徒情報.csv
