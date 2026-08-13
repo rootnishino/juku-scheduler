@@ -11,3 +11,7 @@ __pycache__/
 !export_classroom.py
 !export_to_template.py
 生徒情報.csv
+
+# 作業ログは講師の実名・生徒の名字・在籍人数を含む。
+# このリポジトリは public なので載せない。
+docs/
