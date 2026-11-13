@@ -1,0 +1,460 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>冬期講習 個人予定の提出</title>
+<style>
+:root{
+  --bg:#f6f8f8; --card:#fff; --ink:#1d2b2b; --muted:#5f7070; --line:#d5dede;
+  --accent:#0f766e; --accent-ink:#fff;
+  --x-bg:#fde2e2; --x-ink:#b42323;
+  --t-bg:#fdf0c8; --t-ink:#8a5a00;
+  --q-bg:#e3e9f6; --q-ink:#3a4f86;
+  --sun:#c62828; --sat:#1565c0;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.6 -apple-system,BlinkMacSystemFont,"Hiragino Sans","Noto Sans JP",sans-serif}
+main{max-width:720px;margin:0 auto;padding:12px}
+h1{font-size:19px;margin:4px 0 2px}
+.sub{color:var(--muted);font-size:13px;margin:0 0 12px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px;margin:0 0 14px}
+.who{font-size:17px;font-weight:700}
+.rule{display:grid;gap:6px;margin:0;padding:0;list-style:none;font-size:14px}
+.rule li{display:flex;gap:8px;align-items:flex-start}
+.chip{flex:none;min-width:26px;text-align:center;border-radius:6px;font-weight:700;padding:0 6px}
+.chip.x{background:var(--x-bg);color:var(--x-ink)} .chip.t{background:var(--t-bg);color:var(--t-ink)} .chip.q{background:var(--q-bg);color:var(--q-ink)}
+.notes{margin:10px 0 0;padding-left:1.2em;color:var(--muted);font-size:13px}
+.subjects{display:flex;flex-wrap:wrap;gap:8px}
+.subjects label{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:999px;padding:6px 12px;cursor:pointer;background:#fff}
+.subjects input{accent-color:var(--accent)}
+.subjects label:has(input:checked){background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.week.card{padding:10px 6px}
+.week h2{font-size:15px;margin:0 0 8px 6px}
+.scroll{overflow-x:auto}
+table.grid{border-collapse:collapse;width:100%;table-layout:fixed}
+.grid th,.grid td{border:1px solid var(--line);text-align:center;padding:0}
+.grid thead th{background:#eef3f3;font-size:12px;line-height:1.3;padding:4px 0}
+.grid thead th button{all:unset;display:block;width:100%;cursor:pointer;padding:2px 0}
+.grid thead th button:focus-visible{outline:2px solid var(--accent)}
+.grid th.koma{width:40px;background:#f7fafa;font-size:10px;line-height:1.2;padding:2px 0}
+.grid th.koma b{display:block;font-size:12px}
+.grid .sun{color:var(--sun)} .grid .sat{color:var(--sat)}
+td.cell{height:44px;font-size:18px;font-weight:700;cursor:pointer;user-select:none;-webkit-user-select:none;touch-action:manipulation}
+body.paint td.cell{touch-action:none}
+td.cell:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+td.cell.x{background:var(--x-bg);color:var(--x-ink)}
+td.cell.t{background:var(--t-bg);color:var(--t-ink)}
+td.cell.q{background:var(--q-bg);color:var(--q-ink)}
+.count{display:flex;gap:10px;flex-wrap:wrap;font-size:13px;color:var(--muted);margin:6px 0 0 6px}
+textarea{width:100%;min-height:84px;border:1px solid var(--line);border-radius:8px;padding:8px;font:inherit}
+.check{display:flex;gap:8px;align-items:flex-start}
+.check input{margin-top:5px;accent-color:var(--accent);width:18px;height:18px}
+.actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+button.primary{background:var(--accent);color:var(--accent-ink);border:0;border-radius:8px;padding:12px 22px;font:inherit;font-weight:700;cursor:pointer}
+button.primary:disabled{opacity:.5;cursor:default}
+button.ghost{background:#fff;border:1px solid var(--line);border-radius:8px;padding:10px 14px;font:inherit;cursor:pointer}
+.msg{margin:0;font-size:14px}
+.msg.ok{color:#146c2e} .msg.err{color:var(--x-ink)} .msg.info{color:var(--muted)}
+.banner{background:#fff7e0;border:1px solid #ecd48a;border-radius:8px;padding:8px 12px;font-size:13px;margin:0 0 12px}
+details pre{white-space:pre-wrap;word-break:break-all;font-size:12px;background:#f0f4f4;padding:8px;border-radius:6px}
+.hidden{display:none}
+</style>
+</head>
+<body>
+<main>
+  <h1>冬期講習 個人予定の提出</h1>
+  <p class="sub">2026-2027 root Winter Course（12/20〜1/9）</p>
+
+  <div id="banner" class="banner hidden"></div>
+
+  <section class="card hidden" id="login">
+    <div style="font-weight:700;margin-bottom:6px">はじめに、番号と氏名を入れてください</div>
+    <label for="loginNo" class="sub">Comiru の生徒番号（数字）</label>
+    <input id="loginNo" inputmode="numeric" autocomplete="off" maxlength="12" style="display:block;width:100%;font-size:16px;padding:8px;margin:2px 0 10px;border:1px solid var(--line);border-radius:6px">
+    <label for="loginName" class="sub">氏名（例：山田太郎。空白はあってもなくても構いません）</label>
+    <input id="loginName" autocomplete="off" maxlength="30" style="display:block;width:100%;font-size:16px;padding:8px;margin:2px 0 10px;border:1px solid var(--line);border-radius:6px">
+    <div class="actions"><button class="primary" id="loginBtn">開く</button></div>
+    <p class="msg" id="loginMsg" style="margin-top:8px"></p>
+  </section>
+
+  <div id="form" class="hidden">
+  <section class="card">
+    <div class="who" id="who">読み込み中…</div>
+    <p class="sub" id="status" style="margin:2px 0 0"></p>
+    <p class="sub" style="margin:6px 0 0" id="switchBox"><a href="#" id="switchUser">別の生徒として開き直す</a></p>
+  </section>
+
+  <section class="card">
+    <ul class="rule">
+      <li><span class="chip x">×</span><span>どうしても出席できない</span></li>
+      <li><span class="chip t">△</span><span>できれば休みたい</span></li>
+      <li><span class="chip q">？</span><span>まだ決まっていない</span></li>
+      <li><span class="chip" style="background:#eee">空白</span><span>出席できる。<b>出席できる日を書くのではなく、出席できないところだけ</b>を入れます</span></li>
+    </ul>
+    <ul class="notes">
+      <li>マスを押すたびに 空白 → × → △ → ？ → 空白 と変わります。最初に押したマスの次の印を、なぞったマスにまとめて入れることもできます。</li>
+      <li>日付の見出しを押すと、その日の8コマが全部 × になります（もう一度押すと全部空白）。</li>
+      <li>×や△が多いと、冬期講習は受講できません。</li>
+      <li>講習期間は、普段組まない科目の授業も組みます。自分の受講コマ数の2倍くらいの日程を空けてください。</li>
+    </ul>
+  </section>
+
+  <section class="card">
+    <div style="font-weight:700;margin-bottom:8px">冬期講習で受講する科目</div>
+    <div class="subjects" id="subjects"></div>
+  </section>
+
+  <section class="card" style="padding:10px 14px">
+    <label class="check"><input type="checkbox" id="paintMode"><span><b>なぞって入力</b>（スマホ用）。オンにすると、表の上を指でなぞって、続けて同じ印を入れられます。そのあいだ、表の上では画面が動かないので、画面を動かすときは表の外（日付の見出しや左の時間の列）に指を置いてください。パソコンは、このスイッチなしでマウスでなぞれます。</span></label>
+  </section>
+
+  <div id="weeks"></div>
+
+  <section class="card">
+    <label for="memo" style="font-weight:700">補足（時間が決まっていない理由、決まる時期など）</label>
+    <textarea id="memo" placeholder="例：1/5 は面接の結果で変わります（12/20 に決まる）"></textarea>
+  </section>
+
+  <section class="card" id="parentBox">
+    <label class="check"><input type="checkbox" id="parentOk"><span>保護者に確認しました（小学生・中学生は必ず確認してください）</span></label>
+  </section>
+
+  <section class="card">
+    <div class="actions">
+      <button class="primary" id="submit" disabled>提出する</button>
+      <span class="msg info" id="deadline"></span>
+    </div>
+    <p class="msg" id="result" style="margin-top:10px"></p>
+    <details id="demoOut" class="hidden" style="margin-top:8px">
+      <summary>試作モード：送られる内容（確認用）</summary>
+      <pre id="demoPre"></pre>
+      <button class="ghost" id="copy">コピー</button>
+    </details>
+  </section>
+  </div>
+</main>
+
+<script>
+/* ---------- 設定 ---------- */
+const CONFIG = {
+  ENDPOINT: "https://script.google.com/macros/s/AKfycbxZCNC5bfSwYuto165GhmAySV-CQ-xURF6IgTV0TuRBldqk6BYLgayOpWsKnb3L1PEcJA/exec",                 // Google Apps Script のウェブアプリURL。空なら試作モード（送信せず、このブラウザ内に保存）
+  START: "2026-12-20",          // 第1週の日曜
+  WEEKS: 3,
+  DOWS: [1,2,3,4,5,6],          // 月〜土（日曜は授業なし）
+  KOMAS: [[1,"13:00"],[2,"14:10"],[3,"15:20"],[4,"16:30"],[5,"17:40"],[6,"18:50"],[7,"20:00"],[8,"21:10"]],
+  SUBJECTS: ["英","国","数","理","社","小論文","その他"],
+  DEADLINE: "12/5(土)",
+  RED_DAYS: ["2027-01-01"],     // 赤で表示する日（祝日など）
+};
+const WD = ["日","月","火","水","木","金","土"];
+const CYCLE = [undefined, "x", "t", "q"];     // 空白 → × → △ → ？
+const MARK = {x:"×", t:"△", q:"？"};
+
+/* ---------- 状態 ---------- */
+const params = new URLSearchParams(location.search);
+let token = "";                // Comiru の生徒番号（入力された値）
+let typedName = "";            // 入力された氏名
+let me = null;                 // {name, grade}
+let closed = false;            // 締切を過ぎたら true（サーバーが知らせる）
+let marks = {};                // "週_曜日_コマ" -> "x" | "t" | "q"
+let subjects = new Set();
+const $ = id => document.getElementById(id);
+const demo = !CONFIG.ENDPOINT;
+const draftKey = () => "winter2026_draft_" + (demo ? "demo_" + (params.get("name") || "") : token);
+const credKey = "winter2026_cred";
+const normNo = v => String(v||"").normalize("NFKC").replace(/\s+/g,"");
+
+function pad(n){ return String(n).padStart(2,"0"); }
+function dateOf(w, dow){
+  const [y,m,d] = CONFIG.START.split("-").map(Number);
+  const dt = new Date(y, m-1, d + w*7 + dow);
+  return dt;
+}
+function iso(dt){ return dt.getFullYear()+"-"+pad(dt.getMonth()+1)+"-"+pad(dt.getDate()); }
+function needParent(grade){ return /^(小|中)/.test(grade || ""); }
+
+/* ---------- 表の描画 ---------- */
+function buildWeeks(){
+  let html = "";
+  for(let w=0; w<CONFIG.WEEKS; w++){
+    const first = dateOf(w,0), last = dateOf(w,6);
+    html += `<section class="card week"><h2>第${w+1}週　${first.getMonth()+1}/${first.getDate()}〜${last.getMonth()+1}/${last.getDate()}</h2><div class="scroll"><table class="grid" data-w="${w}"><thead><tr><th class="koma"></th>`;
+    for(const d of CONFIG.DOWS){
+      const dt = dateOf(w,d);
+      const cls = CONFIG.RED_DAYS.includes(iso(dt)) || d===0 ? "sun" : d===6 ? "sat" : "";
+      html += `<th class="${cls}"><button type="button" data-day="${w}_${d}" aria-label="${dt.getMonth()+1}月${dt.getDate()}日 ${WD[d]}曜日 全部">${dt.getMonth()+1}/${dt.getDate()}<br>${WD[d]}</button></th>`;
+    }
+    html += `</tr></thead><tbody>`;
+    for(const [k,time] of CONFIG.KOMAS){
+      html += `<tr><th class="koma"><b>${k}限</b>${time}</th>`;
+      for(const d of CONFIG.DOWS){
+        const dt = dateOf(w,d);
+        html += `<td class="cell" tabindex="0" role="button" data-key="${w}_${d}_${k}" aria-label="${dt.getMonth()+1}月${dt.getDate()}日 ${k}限"></td>`;
+      }
+      html += `</tr>`;
+    }
+    html += `</tbody></table></div><div class="count" data-count="${w}"></div></section>`;
+  }
+  $("weeks").innerHTML = html;
+}
+function paint(td){
+  const v = marks[td.dataset.key];
+  td.className = "cell" + (v ? " " + v : "");
+  td.textContent = v ? MARK[v] : "";
+  const [w,d,k] = td.dataset.key.split("_").map(Number);
+  const dt = dateOf(w,d);
+  td.setAttribute("aria-label", `${dt.getMonth()+1}月${dt.getDate()}日 ${k}限 ${v ? MARK[v] : "空白"}`);
+}
+function paintAll(){
+  document.querySelectorAll("td.cell").forEach(paint);
+  updateCounts();
+}
+function updateCounts(){
+  for(let w=0; w<CONFIG.WEEKS; w++){
+    const c = {x:0,t:0,q:0};
+    for(const key in marks){ if(key.startsWith(w+"_")) c[marks[key]]++; }
+    document.querySelector(`[data-count="${w}"]`).innerHTML =
+      `<span>× ${c.x}</span><span>△ ${c.t}</span><span>？ ${c.q}</span>`;
+  }
+}
+function setMark(key, v){ if(v) marks[key] = v; else delete marks[key]; }
+function cycle(td){
+  const cur = marks[td.dataset.key];
+  const next = CYCLE[(CYCLE.indexOf(cur)+1) % CYCLE.length];
+  setMark(td.dataset.key, next);
+  paint(td); updateCounts(); saveDraft(); markDirty();
+}
+document.addEventListener("click", e => {
+  const cell = e.target.closest("td.cell");
+  if(cell){ if(suppressClick) return; cycle(cell); return; }
+  const day = e.target.closest("button[data-day]");
+  if(day){
+    const keys = CONFIG.KOMAS.map(([k]) => day.dataset.day + "_" + k);
+    const allX = keys.every(key => marks[key] === "x");
+    keys.forEach(key => setMark(key, allX ? undefined : "x"));
+    paintAll(); saveDraft(); markDirty();
+  }
+});
+/* ---------- なぞって入力（最初のマスの「次の印」を、なぞったマス全部に入れる） ---------- */
+let suppressClick = false, painting = false, paintVal, lastCell = null, lastX = 0, lastY = 0;
+const nextOf = v => CYCLE[(CYCLE.indexOf(v)+1) % CYCLE.length];
+function paintOne(td){
+  if(td === lastCell) return;
+  lastCell = td;
+  setMark(td.dataset.key, paintVal);
+  paint(td); updateCounts();
+}
+document.addEventListener("pointerdown", e => {
+  const td = e.target.closest && e.target.closest("td.cell");
+  if(!td) return;
+  if(e.pointerType === "mouse" && e.button !== 0) return;
+  const canPaint = e.pointerType === "mouse" || document.body.classList.contains("paint");
+  if(!canPaint) return;                    // スマホでスイッチがオフのとき: 従来どおり、押して切り替え
+  painting = true; suppressClick = true; lastCell = null; lastX = e.clientX; lastY = e.clientY;
+  paintVal = nextOf(marks[td.dataset.key]);
+  paintOne(td);
+});
+document.addEventListener("pointermove", e => {
+  if(!painting) return;
+  // 速く動かすとイベントが飛ぶので、前の位置から今の位置まで線でつないで、通ったマスを全部塗る
+  const dx = e.clientX - lastX, dy = e.clientY - lastY;
+  const steps = Math.max(1, Math.ceil(Math.hypot(dx, dy) / 6));
+  for(let i = 1; i <= steps; i++){
+    const el = document.elementFromPoint(lastX + dx * i / steps, lastY + dy * i / steps);
+    const td = el && el.closest && el.closest("td.cell");
+    if(td) paintOne(td);
+  }
+  lastX = e.clientX; lastY = e.clientY;
+});
+function endPaint(){
+  if(!painting) return;
+  painting = false; saveDraft(); markDirty();
+  setTimeout(() => { suppressClick = false; }, 0);   // 直後に来るclickだけ無視する
+}
+document.addEventListener("pointerup", endPaint);
+document.addEventListener("pointercancel", endPaint);
+
+/* スマホ用スイッチ（選んだ状態はこの端末に覚えておく） */
+(function(){
+  const sw = document.getElementById("paintMode");
+  let on = false;
+  try{ on = localStorage.getItem("winter2026_paintmode") === "1"; }catch(_){}
+  sw.checked = on; document.body.classList.toggle("paint", on);
+  sw.addEventListener("change", () => {
+    document.body.classList.toggle("paint", sw.checked);
+    try{ localStorage.setItem("winter2026_paintmode", sw.checked ? "1" : "0"); }catch(_){}
+  });
+})();
+
+document.addEventListener("keydown", e => {
+  if((e.key === "Enter" || e.key === " ") && e.target.matches("td.cell")){ e.preventDefault(); cycle(e.target); }
+});
+
+/* ---------- 科目 ---------- */
+function buildSubjects(){
+  $("subjects").innerHTML = CONFIG.SUBJECTS.map(s =>
+    `<label><input type="checkbox" value="${s}">${s}</label>`).join("");
+  $("subjects").addEventListener("change", e => {
+    if(e.target.checked) subjects.add(e.target.value); else subjects.delete(e.target.value);
+    saveDraft(); markDirty();
+  });
+}
+function syncSubjectsUI(){
+  document.querySelectorAll("#subjects input").forEach(i => { i.checked = subjects.has(i.value); });
+}
+
+/* ---------- 下書き（このブラウザ内。更新しても消えない） ---------- */
+function saveDraft(){
+  try{
+    localStorage.setItem(draftKey(), JSON.stringify({
+      marks, subjects:[...subjects], memo:$("memo").value, parentOk:$("parentOk").checked
+    }));
+  }catch(_){}
+}
+function loadDraft(){
+  try{ return JSON.parse(localStorage.getItem(draftKey()) || "null"); }catch(_){ return null; }
+}
+function applyData(d){
+  marks = d.marks || {};
+  subjects = new Set(d.subjects || []);
+  $("memo").value = d.memo || "";
+  $("parentOk").checked = !!d.parentOk;
+  syncSubjectsUI(); paintAll();
+}
+function markDirty(){ $("result").textContent = ""; $("result").className = "msg"; }
+
+/* ---------- 読み込み ---------- */
+async function post(body){
+  const r = await fetch(CONFIG.ENDPOINT, { method:"POST", headers:{"Content-Type":"text/plain;charset=utf-8"}, body: JSON.stringify(body) });
+  return r.json();
+}
+function showForm(){
+  $("login").classList.add("hidden");
+  $("form").classList.remove("hidden");
+  $("who").textContent = `${me.name}（${me.grade}）`;
+  $("parentBox").classList.toggle("hidden", !needParent(me.grade));
+  $("switchBox").classList.toggle("hidden", demo);
+  const d = loadDraft();
+  if(d){ applyData(d); if(!$("status").textContent) $("status").textContent = "前回の入力の続きです。"; }
+  if(closed){
+    $("submit").disabled = true;
+    $("deadline").textContent = "提出の期間は終わりました。直したいときは、塾に連絡してください。";
+  }else{
+    $("submit").disabled = false;
+  }
+}
+function showLogin(msg){
+  $("form").classList.add("hidden");
+  $("login").classList.remove("hidden");
+  const m = $("loginMsg"); m.textContent = msg || ""; m.className = "msg" + (msg ? " err" : "");
+}
+async function login(no, name, auto){
+  const btn = $("loginBtn"); btn.disabled = true;
+  try{
+    const j = await post({ action:"get", t:no, name });
+    if(!j.ok){
+      if(auto){ try{ localStorage.removeItem(credKey); }catch(_){} showLogin(""); }
+      else showLogin("番号と氏名が名簿と合いません。入力を見直してください。分からないときは、塾に聞いてください。");
+      return;
+    }
+    token = no; typedName = name;
+    try{ localStorage.setItem(credKey, JSON.stringify({ no, name })); }catch(_){}
+    me = { name: j.name, grade: j.grade };
+    closed = !!j.closed;
+    $("status").textContent = "";
+    marks = {}; subjects = new Set(); $("memo").value = ""; $("parentOk").checked = false; syncSubjectsUI(); paintAll();
+    if(j.data){ applyData(j.data); $("status").textContent = "提出済みです（" + (j.submittedAt || "") + "）。直して、もう一度提出できます。"; }
+    showForm();
+  }catch(_){
+    showLogin("読み込めませんでした。電波のよいところでもう一度押してください。");
+  }finally{
+    btn.disabled = false;
+  }
+}
+async function init(){
+  buildWeeks(); buildSubjects(); paintAll();
+  $("deadline").textContent = `提出の期限は ${CONFIG.DEADLINE} です。期限まで何度でも直せます。`;
+  $("memo").addEventListener("input", () => { saveDraft(); markDirty(); });
+  $("parentOk").addEventListener("change", () => { saveDraft(); markDirty(); });
+  $("loginBtn").addEventListener("click", () => {
+    const no = normNo($("loginNo").value), name = $("loginName").value.trim();
+    if(!/^[0-9]{4,10}$/.test(no)){ showLogin("生徒番号は数字だけで入れてください。"); return; }
+    if(!name){ showLogin("氏名を入れてください。"); return; }
+    login(no, name, false);
+  });
+  $("loginName").addEventListener("keydown", e => { if(e.key === "Enter") $("loginBtn").click(); });
+  $("switchUser").addEventListener("click", e => {
+    e.preventDefault();
+    try{ localStorage.removeItem(credKey); }catch(_){}
+    token = ""; typedName = ""; me = null;
+    $("loginNo").value = ""; $("loginName").value = "";
+    showLogin("");
+  });
+
+  if(demo){
+    $("banner").classList.remove("hidden");
+    $("banner").textContent = "試作モードです。入力は送信されず、このブラウザ内にだけ保存されます。（?name=氏名&grade=中1 で氏名と学年を変えられます）";
+    me = { name: params.get("name") || "試作 太郎", grade: params.get("grade") || "中1" };
+    showForm();
+    return;
+  }
+  let saved = null;
+  try{ saved = JSON.parse(localStorage.getItem(credKey) || "null"); }catch(_){}
+  if(saved && saved.no && saved.name){
+    $("loginNo").value = saved.no; $("loginName").value = saved.name;
+    await login(saved.no, saved.name, true);
+  }else{
+    showLogin("");
+  }
+}
+
+/* ---------- 提出 ---------- */
+$("submit").addEventListener("click", async () => {
+  const res = $("result");
+  const say = (t, c) => { res.textContent = t; res.className = "msg " + c; };
+  if(subjects.size === 0){ say("受講する科目を1つ以上選んでください。", "err"); return; }
+  if(needParent(me.grade) && !$("parentOk").checked){ say("保護者の確認にチェックを入れてください。", "err"); return; }
+  if(Object.keys(marks).length === 0 &&
+     !confirm("×・△・？が1つもありません。すべての日程に出席できる、という内容で提出しますか？")) return;
+
+  const payload = {
+    action: "save", t: token, name: typedName || me.name, subjects: [...subjects], marks,
+    memo: $("memo").value.trim(), parentOk: $("parentOk").checked,
+    clientTime: new Date().toISOString()
+  };
+  $("submit").disabled = true; say("送信しています…", "info");
+  try{
+    if(demo){
+      $("demoPre").textContent = JSON.stringify(payload, null, 1);
+      $("demoOut").classList.remove("hidden");
+      say("試作モード：送信はしていません（下に内容を出しました）。", "ok");
+    }else{
+      const j = await post(payload);
+      if(!j.ok){ const err = new Error(j.error || "failed"); err.code = j.error; throw err; }
+      say("提出しました（" + j.submittedAt + "）。" + CONFIG.DEADLINE + "まで、このページから何度でも直せます。", "ok");
+    }
+    saveDraft();
+  }catch(err){
+    const m = {
+      deadline: "提出の期間は終わりました。直したいときは、塾に連絡してください。",
+      need_subjects: "受講する科目を1つ以上選んでください。",
+      need_parent: "保護者の確認にチェックを入れてください。",
+      memo_too_long: "補足が長すぎます（500字まで）。",
+      not_found: "番号と氏名が名簿と合いません。「別の生徒として開き直す」からやり直してください。",
+    }[err && err.code];
+    say(m || "送信できませんでした。入力は残っています。電波を確かめて、もう一度押してください。", "err");
+    if(err && err.code === "deadline") closed = true;
+  }finally{
+    $("submit").disabled = closed;
+  }
+});
+$("copy").addEventListener("click", () => {
+  navigator.clipboard && navigator.clipboard.writeText($("demoPre").textContent);
+});
+
+init();
+</script>
+</body>
+</html>
