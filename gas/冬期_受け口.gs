@@ -13,7 +13,7 @@
  */
 
 const CONFIG = {
-  DEADLINE: '2026-12-05T23:59:59+09:00', // 提出の締切。これを過ぎると保存を断る
+  DEADLINE: '2026-12-05T23:59:59+09:00', // 提出の締切。過ぎても保存でき、「回答」シートの「締切後」列に印が付く
   WEEKS: 3,
   DOWS: [1, 2, 3, 4, 5, 6],               // 月〜土
   KOMAS: [1, 2, 3, 4, 5, 6, 7, 8],
@@ -23,7 +23,7 @@ const CONFIG = {
   ROSTER: '名簿',   // 列: 合言葉（=生徒番号） / 生徒ID / 氏名 / 学年
   ANSWERS: '回答',
 };
-const ANSWER_HEADERS = ['合言葉', '氏名', '学年', '提出日時', '科目', '予定(JSON)', '補足', '保護者確認', '提出回数'];
+const ANSWER_HEADERS = ['合言葉', '氏名', '学年', '提出日時', '科目', '予定(JSON)', '補足', '保護者確認', '提出回数', '締切後'];
 const ROSTER_HEADERS = ['合言葉', '生徒ID', '氏名', '学年'];
 const TOKEN_RE = /^[0-9]{4,10}$/;   // 生徒番号（数字のみ）
 const MARK_VALUES = ['x', 't', 'q'];   // x=×  t=△  q=？
@@ -63,7 +63,7 @@ function doPost(e) {
     const now = new Date();
     if (body.action === 'get') {
       const ans = findAnswer_(token);
-      const out = { ok: true, name: member.name, grade: member.grade, closed: isClosed_(now), data: null };
+      const out = { ok: true, name: member.name, grade: member.grade, data: null };
       if (ans) { out.submittedAt = ans.submittedAt; out.data = ans.data; }
       return json_(out);
     }
@@ -73,7 +73,7 @@ function doPost(e) {
     if (!v.ok) return json_(v);
 
     const when = Utilities.formatDate(now, 'Asia/Tokyo', 'yyyy-MM-dd HH:mm:ss');
-    saveAnswer_(token, member, v.record, when);
+    saveAnswer_(token, member, v.record, when, isClosed_(now));
     return json_({ ok: true, submittedAt: when });
   } catch (err) {
     return json_({ ok: false, error: 'server' });
@@ -89,7 +89,6 @@ function isClosed_(now) {
 
 function validateSubmission_(body, member, now) {
   if (!body || typeof body !== 'object') return fail_('bad_request');
-  if (isClosed_(now)) return fail_('deadline');
 
   const marks = body.marks;
   if (!marks || typeof marks !== 'object' || Array.isArray(marks)) return fail_('bad_request');
@@ -175,12 +174,12 @@ function findAnswer_(token) {
   };
 }
 
-function saveAnswer_(token, member, rec, when) {
+function saveAnswer_(token, member, rec, when, late) {
   const sh = SpreadsheetApp.getActive().getSheetByName(CONFIG.ANSWERS);
   const hit = findAnswerRow_(sh, token);
   const count = hit ? Number(hit.values[8] || 0) + 1 : 1;
   const row = [token, member.name, member.grade, when, rec.subjects.join('・'),
-    JSON.stringify(rec.marks), rec.memo, rec.parentOk ? '済' : '', count];
+    JSON.stringify(rec.marks), rec.memo, rec.parentOk ? '済' : '', count, late ? '締切後' : ''];
   if (hit) sh.getRange(hit.rowIndex, 1, 1, row.length).setValues([row]);
   else sh.appendRow(row);
 }

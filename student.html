@@ -83,7 +83,7 @@ details pre{white-space:pre-wrap;word-break:break-all;font-size:12px;background:
   <section class="card">
     <div class="who" id="who">読み込み中…</div>
     <p class="sub" id="status" style="margin:2px 0 0"></p>
-    <p class="sub" style="margin:6px 0 0" id="switchBox"><a href="#" id="switchUser">別の生徒として開き直す</a></p>
+    <p class="sub" style="margin:6px 0 0" id="switchBox"><a href="#" id="switchUser">戻る</a></p>
   </section>
 
   <section class="card">
@@ -107,7 +107,7 @@ details pre{white-space:pre-wrap;word-break:break-all;font-size:12px;background:
   </section>
 
   <section class="card" style="padding:10px 14px">
-    <label class="check"><input type="checkbox" id="paintMode"><span><b>なぞって入力</b>（スマホ用）。オンにすると、表の上を指でなぞって、続けて同じ印を入れられます。そのあいだ、表の上では画面が動かないので、画面を動かすときは表の外（日付の見出しや左の時間の列）に指を置いてください。パソコンは、このスイッチなしでマウスでなぞれます。</span></label>
+    <label class="check"><input type="checkbox" id="paintMode"><span><b>なぞって入力</b>（スマホ用）</span></label>
   </section>
 
   <div id="weeks"></div>
@@ -157,7 +157,6 @@ const params = new URLSearchParams(location.search);
 let token = "";                // Comiru の生徒番号（入力された値）
 let typedName = "";            // 入力された氏名
 let me = null;                 // {name, grade}
-let closed = false;            // 締切を過ぎたら true（サーバーが知らせる）
 let marks = {};                // "週_曜日_コマ" -> "x" | "t" | "q"
 let subjects = new Set();
 const $ = id => document.getElementById(id);
@@ -341,12 +340,7 @@ function showForm(){
   $("switchBox").classList.toggle("hidden", demo);
   const d = loadDraft();
   if(d){ applyData(d); if(!$("status").textContent) $("status").textContent = "前回の入力の続きです。"; }
-  if(closed){
-    $("submit").disabled = true;
-    $("deadline").textContent = "提出の期間は終わりました。直したいときは、塾に連絡してください。";
-  }else{
-    $("submit").disabled = false;
-  }
+  $("submit").disabled = false;
 }
 function showLogin(msg){
   $("form").classList.add("hidden");
@@ -365,7 +359,6 @@ async function login(no, name, auto){
     token = no; typedName = name;
     try{ localStorage.setItem(credKey, JSON.stringify({ no, name })); }catch(_){}
     me = { name: j.name, grade: j.grade };
-    closed = !!j.closed;
     $("status").textContent = "";
     marks = {}; subjects = new Set(); $("memo").value = ""; $("parentOk").checked = false; syncSubjectsUI(); paintAll();
     if(j.data){ applyData(j.data); $("status").textContent = "提出済みです（" + (j.submittedAt || "") + "）。直して、もう一度提出できます。"; }
@@ -378,7 +371,7 @@ async function login(no, name, auto){
 }
 async function init(){
   buildWeeks(); buildSubjects(); paintAll();
-  $("deadline").textContent = `提出の期限は ${CONFIG.DEADLINE} です。期限まで何度でも直せます。`;
+  $("deadline").textContent = `提出の期限は ${CONFIG.DEADLINE} です。期限を過ぎても、提出と直しはできます。`;
   $("memo").addEventListener("input", () => { saveDraft(); markDirty(); });
   $("parentOk").addEventListener("change", () => { saveDraft(); markDirty(); });
   $("loginBtn").addEventListener("click", () => {
@@ -436,21 +429,19 @@ $("submit").addEventListener("click", async () => {
     }else{
       const j = await post(payload);
       if(!j.ok){ const err = new Error(j.error || "failed"); err.code = j.error; throw err; }
-      say("提出しました（" + j.submittedAt + "）。" + CONFIG.DEADLINE + "まで、このページから何度でも直せます。", "ok");
+      say("提出しました（" + j.submittedAt + "）。" + "このページから何度でも直せます。", "ok");
     }
     saveDraft();
   }catch(err){
     const m = {
-      deadline: "提出の期間は終わりました。直したいときは、塾に連絡してください。",
       need_subjects: "受講する科目を1つ以上選んでください。",
       need_parent: "保護者の確認にチェックを入れてください。",
       memo_too_long: "補足が長すぎます（500字まで）。",
-      not_found: "番号と氏名が名簿と合いません。「別の生徒として開き直す」からやり直してください。",
+      not_found: "番号と氏名が名簿と合いません。「戻る」から入れ直してください。",
     }[err && err.code];
     say(m || "送信できませんでした。入力は残っています。電波を確かめて、もう一度押してください。", "err");
-    if(err && err.code === "deadline") closed = true;
   }finally{
-    $("submit").disabled = closed;
+    $("submit").disabled = false;
   }
 });
 $("copy").addEventListener("click", () => {
