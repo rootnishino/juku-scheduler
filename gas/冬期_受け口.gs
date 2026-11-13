@@ -21,9 +21,11 @@ const CONFIG = {
   MEMO_MAX: 500,
   MAX_BODY: 30000,
   ROSTER: '名簿',   // 列: 合言葉（=生徒番号） / 生徒ID / 氏名 / 学年
-  ANSWERS: '回答',
+  ANSWERS: '回答',   // 生徒ごとの最新の1行（提出し直すと上書き）
+  HISTORY: '履歴',   // 提出のたびに1行足す（上書きしない）
 };
 const ANSWER_HEADERS = ['合言葉', '氏名', '学年', '提出日時', '科目', '予定(JSON)', '補足', '保護者確認', '提出回数', '締切後'];
+const HISTORY_HEADERS = ['提出日時', '合言葉', '氏名', '学年', '科目', '予定(JSON)', '補足', '保護者確認', '締切後'];
 const ROSTER_HEADERS = ['合言葉', '生徒ID', '氏名', '学年'];
 const TOKEN_RE = /^[0-9]{4,10}$/;   // 生徒番号（数字のみ）
 const TEACHER = '講師';   // 名簿の「学年」がこの値なら講師（科目と保護者確認は要らない）
@@ -32,7 +34,7 @@ const MARK_VALUES = ['x', 't', 'q'];   // x=×  t=△  q=？
 /* ---------- 初期設定（最初に一度だけ実行） ---------- */
 function 初期設定() {
   const ss = SpreadsheetApp.getActive();
-  [[CONFIG.ROSTER, ROSTER_HEADERS], [CONFIG.ANSWERS, ANSWER_HEADERS]].forEach(function (pair) {
+  [[CONFIG.ROSTER, ROSTER_HEADERS], [CONFIG.ANSWERS, ANSWER_HEADERS], [CONFIG.HISTORY, HISTORY_HEADERS]].forEach(function (pair) {
     const sh = ss.getSheetByName(pair[0]) || ss.insertSheet(pair[0]);
     sh.getRange(1, 1, 1, pair[1].length).setValues([pair[1]]);
     sh.setFrozenRows(1);
@@ -188,6 +190,17 @@ function saveAnswer_(token, member, rec, when, late) {
     JSON.stringify(rec.marks), rec.memo, rec.parentOk ? '済' : '', count, late ? '締切後' : ''];
   if (hit) sh.getRange(hit.rowIndex, 1, 1, row.length).setValues([row]);
   else sh.appendRow(row);
+  appendHistory_([when, token, member.name, member.grade, rec.subjects.join('・'),
+    JSON.stringify(rec.marks), rec.memo, rec.parentOk ? '済' : '', late ? '締切後' : '']);
+}
+
+// 提出のたびに「履歴」シートの末尾へ1行足す。足せなくても、提出そのものは成功させる
+function appendHistory_(row) {
+  try {
+    const ss = SpreadsheetApp.getActive();
+    const sh = ss.getSheetByName(CONFIG.HISTORY);
+    if (sh) sh.appendRow(row);
+  } catch (_) {}
 }
 
 function json_(obj) {
