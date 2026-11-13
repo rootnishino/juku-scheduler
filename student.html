@@ -71,9 +71,9 @@ details pre{white-space:pre-wrap;word-break:break-all;font-size:12px;background:
 
   <section class="card hidden" id="login">
     <div style="font-weight:700;margin-bottom:6px">はじめに、番号と氏名を入れてください</div>
-    <label for="loginNo" class="sub">Comiru の生徒番号（数字）</label>
+    <label for="loginNo" class="sub">Comiru の生徒番号（数字）。講師は、塾から伝えられた番号</label>
     <input id="loginNo" inputmode="numeric" autocomplete="off" maxlength="12" style="display:block;width:100%;font-size:16px;padding:8px;margin:2px 0 10px;border:1px solid var(--line);border-radius:6px">
-    <label for="loginName" class="sub">氏名（例：山田太郎。空白はあってもなくても構いません）</label>
+    <label for="loginName" class="sub">氏名（例：山田太郎。空白はあってもなくても構いません。講師は苗字だけ）</label>
     <input id="loginName" autocomplete="off" maxlength="30" style="display:block;width:100%;font-size:16px;padding:8px;margin:2px 0 10px;border:1px solid var(--line);border-radius:6px">
     <div class="actions"><button class="primary" id="loginBtn">開く</button></div>
     <p class="msg" id="loginMsg" style="margin-top:8px"></p>
@@ -93,7 +93,12 @@ details pre{white-space:pre-wrap;word-break:break-all;font-size:12px;background:
       <li><span class="chip q">？</span><span>まだ決まっていない</span></li>
       <li><span class="chip" style="background:#eee">空白</span><span>出席できる。<b>出席できる日を書くのではなく、出席できないところだけ</b>を入れます</span></li>
     </ul>
-    <ul class="notes">
+    <ul class="notes only-teacher hidden">
+      <li>授業に入れない時間に、印を入れます。空白は、授業に入れる時間です。</li>
+      <li>マスを押すたびに 空白 → × → △ → ？ → 空白 と変わります。日付の見出しを押すと、その日の8コマに同じ印をまとめて入れられます。</li>
+      <li>△は「できれば避けたい」、？は「まだ決まっていない」です。</li>
+    </ul>
+    <ul class="notes only-student">
       <li>マスを押すたびに 空白 → × → △ → ？ → 空白 と変わります。最初に押したマスの次の印を、なぞったマスにまとめて入れることもできます。</li>
       <li>日付の見出しを押すと、その日の8コマに、同じ印をまとめて入れられます。押すたびに 全部空白 → 全部 × → 全部 △ → 全部 ？ → 全部空白 と変わります（印がばらばらのときは、全部 × になります）。</li>
       <li>×や△が多いと、冬期講習は受講できません。</li>
@@ -101,7 +106,7 @@ details pre{white-space:pre-wrap;word-break:break-all;font-size:12px;background:
     </ul>
   </section>
 
-  <section class="card">
+  <section class="card only-student" id="subjectCard">
     <div style="font-weight:700;margin-bottom:8px">冬期講習で受講する科目</div>
     <div class="subjects" id="subjects"></div>
   </section>
@@ -156,7 +161,7 @@ const MARK = {x:"×", t:"△", q:"？"};
 const params = new URLSearchParams(location.search);
 let token = "";                // Comiru の生徒番号（入力された値）
 let typedName = "";            // 入力された氏名
-let me = null;                 // {name, grade}
+let me = null;                 // {name, grade, role}
 let marks = {};                // "週_曜日_コマ" -> "x" | "t" | "q"
 let subjects = new Set();
 const $ = id => document.getElementById(id);
@@ -335,8 +340,11 @@ async function post(body){
 function showForm(){
   $("login").classList.add("hidden");
   $("form").classList.remove("hidden");
-  $("who").textContent = `${me.name}（${me.grade}）`;
-  $("parentBox").classList.toggle("hidden", !needParent(me.grade));
+  $("who").textContent = me.role === "teacher" ? `${me.name} 先生` : `${me.name}（${me.grade}）`;
+  const teacher = me.role === "teacher";
+  document.querySelectorAll(".only-student").forEach(e => e.classList.toggle("hidden", teacher));
+  document.querySelectorAll(".only-teacher").forEach(e => e.classList.toggle("hidden", !teacher));
+  $("parentBox").classList.toggle("hidden", teacher || !needParent(me.grade));
   $("switchBox").classList.toggle("hidden", demo);
   const d = loadDraft();
   if(d){ applyData(d); if(!$("status").textContent) $("status").textContent = "前回の入力の続きです。"; }
@@ -358,7 +366,7 @@ async function login(no, name, auto){
     }
     token = no; typedName = name;
     try{ localStorage.setItem(credKey, JSON.stringify({ no, name })); }catch(_){}
-    me = { name: j.name, grade: j.grade };
+    me = { name: j.name, grade: j.grade, role: j.role };
     $("status").textContent = "";
     marks = {}; subjects = new Set(); $("memo").value = ""; $("parentOk").checked = false; syncSubjectsUI(); paintAll();
     if(j.data){ applyData(j.data); $("status").textContent = "提出済みです（" + (j.submittedAt || "") + "）。直して、もう一度提出できます。"; }
@@ -410,13 +418,14 @@ async function init(){
 $("submit").addEventListener("click", async () => {
   const res = $("result");
   const say = (t, c) => { res.textContent = t; res.className = "msg " + c; };
-  if(subjects.size === 0){ say("受講する科目を1つ以上選んでください。", "err"); return; }
-  if(needParent(me.grade) && !$("parentOk").checked){ say("保護者の確認にチェックを入れてください。", "err"); return; }
+  const teacher = me.role === "teacher";
+  if(!teacher && subjects.size === 0){ say("受講する科目を1つ以上選んでください。", "err"); return; }
+  if(!teacher && needParent(me.grade) && !$("parentOk").checked){ say("保護者の確認にチェックを入れてください。", "err"); return; }
   if(Object.keys(marks).length === 0 &&
-     !confirm("×・△・？が1つもありません。すべての日程に出席できる、という内容で提出しますか？")) return;
+     !confirm((teacher ? "×・△・？が1つもありません。すべての日程に授業に入れる、という内容で提出しますか？" : "×・△・？が1つもありません。すべての日程に出席できる、という内容で提出しますか？"))) return;
 
   const payload = {
-    action: "save", t: token, name: typedName || me.name, subjects: [...subjects], marks,
+    action: "save", t: token, name: typedName || me.name, subjects: me.role === "teacher" ? [] : [...subjects], marks,
     memo: $("memo").value.trim(), parentOk: $("parentOk").checked,
     clientTime: new Date().toISOString()
   };
