@@ -95,7 +95,7 @@ details pre{white-space:pre-wrap;word-break:break-all;font-size:12px;background:
     </ul>
     <ul class="notes">
       <li>マスを押すたびに 空白 → × → △ → ？ → 空白 と変わります。最初に押したマスの次の印を、なぞったマスにまとめて入れることもできます。</li>
-      <li>日付の見出しを押すと、その日の8コマが全部 × になります（もう一度押すと全部空白）。</li>
+      <li>日付の見出しを押すと、その日の8コマに、同じ印をまとめて入れられます。押すたびに 全部空白 → 全部 × → 全部 △ → 全部 ？ → 全部空白 と変わります（印がばらばらのときは、全部 × になります）。</li>
       <li>×や△が多いと、冬期講習は受講できません。</li>
       <li>講習期間は、普段組まない科目の授業も組みます。自分の受講コマ数の2倍くらいの日程を空けてください。</li>
     </ul>
@@ -232,8 +232,11 @@ document.addEventListener("click", e => {
   const day = e.target.closest("button[data-day]");
   if(day){
     const keys = CONFIG.KOMAS.map(([k]) => day.dataset.day + "_" + k);
-    const allX = keys.every(key => marks[key] === "x");
-    keys.forEach(key => setMark(key, allX ? undefined : "x"));
+    // 8コマが同じ印なら、その次の印（空白→×→△→？→空白）を全部に入れる。印がばらばらのときは全部 ×
+    const first = marks[keys[0]];
+    const same = keys.every(key => marks[key] === first);
+    const next = same ? CYCLE[(CYCLE.indexOf(first)+1) % CYCLE.length] : "x";
+    keys.forEach(key => setMark(key, next));
     paintAll(); saveDraft(); markDirty();
   }
 });
