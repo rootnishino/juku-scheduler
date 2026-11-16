@@ -21,7 +21,7 @@ button{font-size:15px;padding:8px 16px;margin-top:10px}
 .card h2{font-size:16px;margin:0 0 4px}.card h2 small{font-weight:normal;color:var(--sub);margin-left:8px}
 .meta,.memo{font-size:12px;color:var(--sub);margin:2px 0}.memo{color:var(--warn)}.late{color:#c0392b}
 .weeks{display:flex;gap:8px;margin-top:6px;flex-wrap:wrap}
-table{border-collapse:collapse;font-size:11px;table-layout:fixed;width:224px}
+table{border-collapse:collapse;font-size:11px;table-layout:fixed}
 th,td{border:1px solid var(--line);text-align:center;padding:2px 0;width:32px;overflow:hidden;white-space:nowrap}th{background:var(--head);font-weight:normal}
 td.mx{background:var(--x);color:var(--xfg)}td.mt{background:var(--t)}td.mq{background:var(--q)}td.mo{background:var(--ok)}
 .tabs{margin-bottom:12px}.tabs button{margin:0 6px 0 0;padding:4px 12px}.tabs button.on{font-weight:bold;text-decoration:underline}
@@ -91,7 +91,7 @@ function render(){
     if(p.memo.trim()) h += `<p class="memo">補足：${esc(p.memo.trim())}</p>`;
     h += '<div class="weeks">';
     for(let w = 0; w < data.weeks; w++){
-      h += "<table><thead><tr><th></th>";
+      h += `<table style="width:${(data.dows.length+1)*32}px"><thead><tr><th></th>`;
       for(const d of data.dows){
         const day = new Date(start.getTime() + (7*w + d) * 86400000);
         const jd = new Date(day.getTime() + 9*3600000);   // 日本の日付で表示する
