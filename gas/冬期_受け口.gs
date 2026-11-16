@@ -4,6 +4,7 @@
  * student.html から次を受け付けます。
  *   GET  ?action=ping              動作確認
  *   POST {action:"get", t:<生徒番号>, name:<氏名>}    番号と氏名が名簿と合えば、学年と提出済みの内容を返す
+ *   POST {action:"overview", t, name}   講師だけ。全員の提出状況を返す（view.html が表にする）
  *   POST {action:"save", t:<生徒番号>, name:<氏名>, ...}  合えば予定を保存する（同じ番号なら上書き）
  * 氏名はURLに載せないため、どちらもPOSTで受けます。
  *
@@ -71,6 +72,10 @@ function doPost(e) {
       const out = { ok: true, name: member.name, grade: member.grade, role: member.grade === TEACHER ? 'teacher' : 'student', data: null };
       if (ans) { out.submittedAt = ans.submittedAt; out.data = ans.data; }
       return json_(out);
+    }
+    if (body.action === 'overview') {
+      if (member.grade !== TEACHER) return json_({ ok: false, error: 'not_found' });   // 講師だけが見られる
+      return json_(overviewData_());
     }
     if (body.action !== 'save') return json_({ ok: false, error: 'bad_request' });
 
@@ -204,6 +209,28 @@ function appendHistory_(row) {
     const sh = ss.getSheetByName(CONFIG.HISTORY);
     if (sh) sh.appendRow(row);
   } catch (_) {}
+}
+
+// 講師向け：名簿の全員について、提出の有無と予定を返す（生徒番号は含めない）
+function overviewData_() {
+  const ss = SpreadsheetApp.getActive();
+  const ros = ss.getSheetByName(CONFIG.ROSTER), ansSh = ss.getSheetByName(CONFIG.ANSWERS);
+  const roster = ros && ros.getLastRow() >= 2 ? ros.getRange(2, 1, ros.getLastRow() - 1, ROSTER_HEADERS.length).getValues() : [];
+  const answers = {};
+  if (ansSh && ansSh.getLastRow() >= 2) {
+    ansSh.getRange(2, 1, ansSh.getLastRow() - 1, ANSWER_HEADERS.length).getValues().forEach(function (r) { answers[String(r[0])] = r; });
+  }
+  const people = roster.map(function (rr) {
+    const a = answers[String(rr[0])];
+    const p = { name: String(rr[2]).trim(), grade: String(rr[3]).trim(), submitted: !!a };
+    if (a) {
+      let marks = {};
+      try { marks = JSON.parse(String(a[5] || '{}')); } catch (_) {}
+      p.at = String(a[3]); p.subjects = String(a[4] || ''); p.memo = String(a[6] || ''); p.late = !!String(a[9] || ''); p.marks = marks;
+    }
+    return p;
+  });
+  return { ok: true, start: CONFIG.START, weeks: CONFIG.WEEKS, dows: CONFIG.DOWS, komas: CONFIG.KOMAS, people: people };
 }
 
 /* ---------- 一覧シート（全員の予定を1枚で見る） ---------- */
