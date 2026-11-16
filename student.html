@@ -84,6 +84,7 @@ details pre{white-space:pre-wrap;word-break:break-all;font-size:12px;background:
     <div class="who" id="who">読み込み中…</div>
     <p class="sub" id="status" style="margin:2px 0 0"></p>
     <p class="sub" style="margin:6px 0 0" id="switchBox"><a href="#" id="switchUser">戻る</a></p>
+    <p class="sub only-teacher hidden" style="margin:6px 0 0"><a href="view.html">全員の回答を見る・生徒の代わりに入力する</a></p>
   </section>
 
   <section class="card">
@@ -166,7 +167,8 @@ let marks = {};                // "週_曜日_コマ" -> "x" | "t" | "q"
 let subjects = new Set();
 const $ = id => document.getElementById(id);
 const demo = !CONFIG.ENDPOINT;
-const draftKey = () => "winter2026_draft_" + (demo ? "demo_" + (params.get("name") || "") : token);
+const proxyRef = (/^#proxy=(\d+)$/.exec(location.hash) || [])[1] || "";   // 講師が生徒の代わりに入れるとき（講師用ページから開く）
+const draftKey = () => "winter2026_draft_" + (proxyRef ? "proxy" + proxyRef : demo ? "demo_" + (params.get("name") || "") : token);
 const credKey = "winter2026_cred";
 const normNo = v => String(v||"").normalize("NFKC").replace(/\s+/g,"");
 
@@ -358,14 +360,15 @@ function showLogin(msg){
 async function login(no, name, auto){
   const btn = $("loginBtn"); btn.disabled = true;
   try{
-    const j = await post({ action:"get", t:no, name });
+    const j = await post(proxyRef ? { action:"get", t:no, name, proxy:proxyRef } : { action:"get", t:no, name });
     if(!j.ok){
-      if(auto){ try{ localStorage.removeItem(credKey); }catch(_){} showLogin(""); }
+      if(proxyRef){ showLogin("代理入力を開けませんでした。講師用の一覧ページで入り直してから、もう一度開いてください。"); $("loginBtn").disabled = true; }
+      else if(auto){ try{ localStorage.removeItem(credKey); }catch(_){} showLogin(""); }
       else showLogin("番号と氏名が名簿と合いません。入力を見直してください。分からないときは、塾に聞いてください。");
       return;
     }
     token = no; typedName = name;
-    try{ localStorage.setItem(credKey, JSON.stringify({ no, name })); }catch(_){}
+    if(!proxyRef){ try{ localStorage.setItem(credKey, JSON.stringify({ no, name })); }catch(_){} }
     me = { name: j.name, grade: j.grade, role: j.role };
     $("status").textContent = "";
     marks = {}; subjects = new Set(); $("memo").value = ""; $("parentOk").checked = false; syncSubjectsUI(); paintAll();
@@ -390,8 +393,9 @@ async function init(){
   });
   $("loginName").addEventListener("keydown", e => { if(e.key === "Enter") $("loginBtn").click(); });
   $("switchUser").addEventListener("click", e => {
+    if(proxyRef) return;   // 代理入力では、リンク先（講師用の一覧）へそのまま移る
     e.preventDefault();
-    try{ localStorage.removeItem(credKey); }catch(_){}
+    try{ localStorage.removeItem(credKey); localStorage.removeItem("winter2026_view_cred"); }catch(_){}
     token = ""; typedName = ""; me = null;
     $("loginNo").value = ""; $("loginName").value = "";
     showLogin("");
@@ -402,6 +406,19 @@ async function init(){
     $("banner").textContent = "試作モードです。入力は送信されず、このブラウザ内にだけ保存されます。（?name=氏名&grade=中1 で氏名と学年を変えられます）";
     me = { name: params.get("name") || "試作 太郎", grade: params.get("grade") || "中1" };
     showForm();
+    return;
+  }
+  if(proxyRef){
+    // 講師用ページで入った講師の情報を使う。生徒の番号は要らない
+    let t = null;
+    try{ t = JSON.parse(localStorage.getItem("winter2026_view_cred") || localStorage.getItem(credKey) || "null"); }catch(_){}
+    $("banner").classList.remove("hidden");
+    $("banner").textContent = "講師の代理入力です。提出すると、その生徒の回答として保存されます（履歴に入力した講師の名前が残ります）。";
+    $("switchUser").textContent = "講師用の一覧に戻る";
+    $("switchUser").setAttribute("href", "view.html");
+    if(!(t && t.no && t.name)){ showLogin("講師用の一覧ページ（view.html）で入ってから、そこの「代理入力」を押して開いてください。"); $("loginBtn").disabled = true; return; }
+    token = t.no; typedName = t.name;
+    await login(t.no, t.name, true);
     return;
   }
   let saved = null;
@@ -425,7 +442,7 @@ $("submit").addEventListener("click", async () => {
      !confirm((teacher ? "×・△・？が1つもありません。すべての日程に授業に入れる、という内容で提出しますか？" : "×・△・？が1つもありません。すべての日程に出席できる、という内容で提出しますか？"))) return;
 
   const payload = {
-    action: "save", t: token, name: typedName || me.name, subjects: me.role === "teacher" ? [] : [...subjects], marks,
+    action: "save", t: token, name: typedName || me.name, ...(proxyRef ? { proxy: proxyRef } : {}), subjects: me.role === "teacher" ? [] : [...subjects], marks,
     memo: $("memo").value.trim(), parentOk: $("parentOk").checked,
     clientTime: new Date().toISOString()
   };

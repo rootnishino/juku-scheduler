@@ -28,7 +28,7 @@ const CONFIG = {
   START: '2026-12-20', // 1週目の日曜日（日付の見出し用）
 };
 const ANSWER_HEADERS = ['合言葉', '氏名', '学年', '提出日時', '科目', '予定(JSON)', '補足', '保護者確認', '提出回数', '締切後'];
-const HISTORY_HEADERS = ['提出日時', '合言葉', '氏名', '学年', '科目', '予定(JSON)', '補足', '保護者確認', '締切後'];
+const HISTORY_HEADERS = ['提出日時', '合言葉', '氏名', '学年', '科目', '予定(JSON)', '補足', '保護者確認', '締切後', '入力者'];
 const ROSTER_HEADERS = ['合言葉', '生徒ID', '氏名', '学年'];
 const TOKEN_RE = /^[0-9]{4,10}$/;   // 生徒番号（数字のみ）
 const TEACHER = '講師';   // 名簿の「学年」がこの値なら講師（科目と保護者確認は要らない）
@@ -62,9 +62,20 @@ function doPost(e) {
     let body;
     try { body = JSON.parse(raw); } catch (_) { return json_({ ok: false, error: 'bad_request' }); }
     if (!body || typeof body !== 'object') return json_({ ok: false, error: 'bad_request' });
-    const token = normalize_(body.t);
-    const member = TOKEN_RE.test(token) ? findMember_(token, body.name) : null;
+    let token = normalize_(body.t);
+    let member = TOKEN_RE.test(token) ? findMember_(token, body.name) : null;
     if (!member) return json_({ ok: false, error: 'not_found' });
+
+    // 講師は、一覧の「ref」を指定して、生徒の代わりに見る・出すことができる（履歴に入力者が残る）
+    let actor = '';
+    if (body.proxy != null && body.action !== 'overview') {
+      if (member.grade !== TEACHER) return json_({ ok: false, error: 'not_found' });
+      const target = memberByRef_(body.proxy);
+      if (!target || target.grade === TEACHER) return json_({ ok: false, error: 'not_found' });
+      actor = member.name;
+      token = target.token;
+      member = target;
+    }
 
     const now = new Date();
     if (body.action === 'get') {
@@ -83,7 +94,7 @@ function doPost(e) {
     if (!v.ok) return json_(v);
 
     const when = Utilities.formatDate(now, 'Asia/Tokyo', 'yyyy-MM-dd HH:mm:ss');
-    saveAnswer_(token, member, v.record, when, isClosed_(now));
+    saveAnswer_(token, member, v.record, when, isClosed_(now), actor);
     rebuildOverview_();
     return json_({ ok: true, submittedAt: when });
   } catch (err) {
@@ -161,6 +172,17 @@ function findMember_(token, name) {
   return null;
 }
 
+// 名簿の行番号（2から）で、生徒を1人選ぶ。番号を画面に出さずに代理入力するための指定
+function memberByRef_(ref) {
+  const n = Number(ref);
+  const sh = SpreadsheetApp.getActive().getSheetByName(CONFIG.ROSTER);
+  if (!sh || !Number.isInteger(n) || n < 2 || n > sh.getLastRow()) return null;
+  const r = sh.getRange(n, 1, 1, ROSTER_HEADERS.length).getValues()[0];
+  const token = normalize_(r[0]);
+  if (!TOKEN_RE.test(token)) return null;
+  return { token: token, name: String(r[2]).trim(), grade: String(r[3]).trim() };
+}
+
 function findAnswerRow_(sh, token) {
   const last = sh.getLastRow();
   if (last < 2) return null;
@@ -190,7 +212,7 @@ function findAnswer_(token) {
   };
 }
 
-function saveAnswer_(token, member, rec, when, late) {
+function saveAnswer_(token, member, rec, when, late, actor) {
   const sh = SpreadsheetApp.getActive().getSheetByName(CONFIG.ANSWERS);
   const hit = findAnswerRow_(sh, token);
   const count = hit ? Number(hit.values[8] || 0) + 1 : 1;
@@ -199,7 +221,7 @@ function saveAnswer_(token, member, rec, when, late) {
   if (hit) sh.getRange(hit.rowIndex, 1, 1, row.length).setValues([row]);
   else sh.appendRow(row);
   appendHistory_([when, token, member.name, member.grade, rec.subjects.join('・'),
-    JSON.stringify(rec.marks), rec.memo, rec.parentOk ? '済' : '', late ? '締切後' : '']);
+    JSON.stringify(rec.marks), rec.memo, rec.parentOk ? '済' : '', late ? '締切後' : '', actor || '']);
 }
 
 // 提出のたびに「履歴」シートの末尾へ1行足す。足せなくても、提出そのものは成功させる
@@ -220,9 +242,9 @@ function overviewData_() {
   if (ansSh && ansSh.getLastRow() >= 2) {
     ansSh.getRange(2, 1, ansSh.getLastRow() - 1, ANSWER_HEADERS.length).getValues().forEach(function (r) { answers[String(r[0])] = r; });
   }
-  const people = roster.map(function (rr) {
+  const people = roster.map(function (rr, i) {
     const a = answers[String(rr[0])];
-    const p = { name: String(rr[2]).trim(), grade: String(rr[3]).trim(), submitted: !!a };
+    const p = { ref: i + 2, name: String(rr[2]).trim(), grade: String(rr[3]).trim(), submitted: !!a };
     if (a) {
       let marks = {};
       try { marks = JSON.parse(String(a[5] || '{}')); } catch (_) {}

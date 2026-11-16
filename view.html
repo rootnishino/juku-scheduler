@@ -26,6 +26,9 @@ th,td{border:1px solid var(--line);text-align:center;padding:2px 0;width:32px;ov
 td.mx{background:var(--x);color:var(--xfg)}td.mt{background:var(--t)}td.mq{background:var(--q)}td.mo{background:var(--ok)}
 .tabs{margin-bottom:12px}.tabs button{margin:0 6px 0 0;padding:4px 12px}.tabs button.on{font-weight:bold;text-decoration:underline}
 .hidden{display:none}
+.plist a{display:inline-block;margin:2px 8px 2px 0;padding:4px 10px;border:1px solid var(--line);border-radius:6px;text-decoration:none;color:var(--fg);background:var(--card)}
+.plist a.done{opacity:.6}.plist h3{font-size:14px;margin:12px 0 4px}
+.edit{font-size:12px;margin-left:8px}
 </style>
 </head>
 <body>
@@ -41,7 +44,7 @@ td.mx{background:var(--x);color:var(--xfg)}td.mt{background:var(--t)}td.mq{backg
 
 <div id="main" class="hidden">
   <div class="box sum" id="sum"></div>
-  <div class="tabs"><button data-f="all" class="on">全員</button><button data-f="student">生徒</button><button data-f="teacher">講師</button><button id="reload">更新</button><button id="out">戻る</button></div>
+  <div class="tabs"><button data-f="all" class="on">全員</button><button data-f="student">生徒</button><button data-f="teacher">講師</button><button data-f="proxy">代理入力</button><button id="reload">更新</button><a href="student.html" style="margin-left:6px">自分の予定を出す</a></div>
   <div class="cards" id="cards"></div>
 </div>
 
@@ -82,11 +85,22 @@ function render(){
     + `未提出の生徒：${esc(miss(stu))}<br>未提出の講師：${esc(miss(tea))}<br>`
     + `<small>緑＝来られる　赤×＝来られない　黄△＝避けたい　青？＝未定。未提出の人は、まだ予定が分かりません。</small>`;
   const start = new Date(data.start + "T00:00:00+09:00");
+  if(filter === "proxy"){
+    const byGrade = {};
+    stu.forEach(p => (byGrade[p.grade] = byGrade[p.grade] || []).push(p));
+    $("cards").className = "plist";
+    $("cards").innerHTML = '<p class="meta">生徒の名前を押すと、その生徒の代わりに入力できます（提出済みの人は、直せます）。薄い表示は提出済みです。</p>'
+      + Object.keys(byGrade).sort((a,b) => a.localeCompare(b, "ja")).map(g =>
+        `<h3>${esc(g)}</h3>` + byGrade[g].sort((a,b) => a.name.localeCompare(b.name, "ja")).map(p =>
+          `<a class="${p.submitted ? "done" : ""}" href="student.html#proxy=${p.ref}">${esc(p.name)}${p.submitted ? " ✓" : ""}</a>`).join("")).join("");
+    return;
+  }
+  $("cards").className = "cards";
   const list = ppl.filter(p => p.submitted && (filter === "all" || (filter === "teacher") === (p.grade === "講師")));
   list.sort((a,b) => (a.grade === "講師") - (b.grade === "講師") || a.grade.localeCompare(b.grade, "ja") || a.name.localeCompare(b.name, "ja"));
   $("cards").innerHTML = list.map(p => {
     const nx = Object.values(p.marks).filter(v => v === "x").length;
-    let h = `<section class="card"><h2>${esc(p.name)}${p.grade === "講師" ? " 先生" : ""}<small>${esc(p.grade)}</small></h2>`
+    let h = `<section class="card"><h2>${esc(p.name)}${p.grade === "講師" ? " 先生" : ""}<small>${esc(p.grade)}</small>${p.grade === "講師" ? "" : `<a class="edit" href="student.html#proxy=${p.ref}">代理入力・直す</a>`}</h2>`
       + `<p class="meta">提出 ${esc(p.at)}${p.subjects ? " ／ 科目 " + esc(p.subjects) : ""} ／ 来られる枠 ${slots - nx}/${slots}${p.late ? ' ／ <b class="late">締切後</b>' : ""}</p>`;
     if(p.memo.trim()) h += `<p class="memo">補足：${esc(p.memo.trim())}</p>`;
     h += '<div class="weeks">';
@@ -117,13 +131,12 @@ $("go").onclick = () => {
   load(no, nm, false);
 };
 $("reload").onclick = () => load(cred.no, cred.name, false);
-$("out").onclick = () => { try{ localStorage.removeItem(KEY); }catch(_){} location.reload(); };
 document.querySelectorAll(".tabs button[data-f]").forEach(b => b.onclick = () => {
   filter = b.dataset.f;
   document.querySelectorAll(".tabs button[data-f]").forEach(x => x.classList.toggle("on", x === b));
   render();
 });
-try{ const c = JSON.parse(localStorage.getItem(KEY) || "null"); if(c && c.no && c.name) load(c.no, c.name, true); }catch(_){}
+try{ const c = JSON.parse(localStorage.getItem(KEY) || localStorage.getItem("winter2026_cred") || "null"); if(c && c.no && c.name) load(c.no, c.name, true); }catch(_){}
 </script>
 </body>
 </html>
