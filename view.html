@@ -34,6 +34,7 @@ td.mx{background:var(--x);color:var(--xfg)}td.mt{background:var(--t)}td.mq{backg
 <body>
 <h1>冬期講習 回答一覧（講師用）</h1>
 
+<div id="loading" class="box hidden">読み込み中です。数秒かかることがあります…</div>
 <div id="login" class="box">
   <div>講師の番号と氏名で入ります（提出ページと同じものです）。</div>
   <label for="no">番号（数字）</label><input id="no" inputmode="numeric" autocomplete="off">
@@ -63,10 +64,14 @@ async function post(body){
 }
 async function load(no, name, auto){
   $("msg").textContent = "";
+  $("loading").classList.remove("hidden"); $("login").classList.add("hidden");
+  const back = () => { $("loading").classList.add("hidden"); $("login").classList.remove("hidden"); };
   let res;
   try { res = await post({action:"overview", t:no, name:name}); }
-  catch(e){ $("msg").textContent = "つながりませんでした。時間をおいてもう一度試してください。"; return; }
+  catch(e){ back(); $("msg").textContent = "つながりませんでした。時間をおいてもう一度試してください。"; return; }
+  $("loading").classList.add("hidden");
   if(!res.ok){
+    back();
     if(auto){ try{ localStorage.removeItem(KEY); }catch(_){} }
     $("msg").textContent = res.error === "not_found" ? "番号と氏名が合わないか、講師として登録されていません。" : "うまく表示できませんでした。";
     return;
