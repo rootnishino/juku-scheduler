@@ -23,6 +23,8 @@ const CONFIG = {
   ROSTER: '名簿',   // 列: 合言葉（=生徒番号） / 生徒ID / 氏名 / 学年
   ANSWERS: '回答',   // 生徒ごとの最新の1行（提出し直すと上書き）
   HISTORY: '履歴',   // 提出のたびに1行足す（上書きしない）
+  OVERVIEW: '一覧',  // 全員の予定を1枚の表にしたもの。提出のたびに作り直す（手で書き込まない）
+  START: '2026-12-20', // 1週目の日曜日（日付の見出し用）
 };
 const ANSWER_HEADERS = ['合言葉', '氏名', '学年', '提出日時', '科目', '予定(JSON)', '補足', '保護者確認', '提出回数', '締切後'];
 const HISTORY_HEADERS = ['提出日時', '合言葉', '氏名', '学年', '科目', '予定(JSON)', '補足', '保護者確認', '締切後'];
@@ -77,6 +79,7 @@ function doPost(e) {
 
     const when = Utilities.formatDate(now, 'Asia/Tokyo', 'yyyy-MM-dd HH:mm:ss');
     saveAnswer_(token, member, v.record, when, isClosed_(now));
+    rebuildOverview_();
     return json_({ ok: true, submittedAt: when });
   } catch (err) {
     return json_({ ok: false, error: 'server' });
@@ -201,6 +204,79 @@ function appendHistory_(row) {
     const sh = ss.getSheetByName(CONFIG.HISTORY);
     if (sh) sh.appendRow(row);
   } catch (_) {}
+}
+
+/* ---------- 一覧シート（全員の予定を1枚で見る） ---------- */
+// 手で実行しても作り直せる。失敗しても提出は成功させる
+function 一覧を更新() { rebuildOverview_(true); }
+
+function rebuildOverview_(loud) {
+  try {
+    const ss = SpreadsheetApp.getActive();
+    const ros = ss.getSheetByName(CONFIG.ROSTER);
+    const ansSh = ss.getSheetByName(CONFIG.ANSWERS);
+    if (!ros || ros.getLastRow() < 2) return;
+    const roster = ros.getRange(2, 1, ros.getLastRow() - 1, ROSTER_HEADERS.length).getValues();
+    const answers = {};
+    if (ansSh && ansSh.getLastRow() >= 2) {
+      ansSh.getRange(2, 1, ansSh.getLastRow() - 1, ANSWER_HEADERS.length).getValues().forEach(function (r) { answers[String(r[0])] = r; });
+    }
+    const slots = [];
+    for (let w = 0; w < CONFIG.WEEKS; w++) CONFIG.DOWS.forEach(function (d) { CONFIG.KOMAS.forEach(function (k) { slots.push([w, d, k]); }); });
+    const FIX = ['氏名', '学年', '状況', '提出日時', '来られる枠', '科目', '補足'];
+    const nCols = FIX.length + slots.length;
+    const startMs = new Date(CONFIG.START + 'T00:00:00+09:00').getTime();
+    const WD = '日月火水木金土';
+    const head1 = FIX.map(function () { return ''; }), head2 = FIX.slice();
+    slots.forEach(function (s) {
+      const ms = startMs + (7 * s[0] + s[1]) * 86400000;
+      head1.push(s[2] === CONFIG.KOMAS[0] ? Utilities.formatDate(new Date(ms), 'Asia/Tokyo', 'M/d') + '(' + WD[s[1]] + ')' : '');
+      head2.push(String(s[2]));
+    });
+    const values = [], colors = [];
+    const GREEN = '#e6f4e6', RED = '#f4b6b6', YEL = '#fde7a6', BLUE = '#cfe3f7', GRAY = '#eeeeee';
+    const MARK = { x: ['×', RED], t: ['△', YEL], q: ['？', BLUE] };
+    roster.forEach(function (rr) {
+      const token = String(rr[0]), a = answers[token];
+      const row = [String(rr[2]), String(rr[3])], bg = [];
+      for (let i = 0; i < FIX.length; i++) bg.push(a ? '#ffffff' : GRAY);
+      if (!a) {
+        row.push('未提出', '', '', '', '');
+        slots.forEach(function () { row.push(''); bg.push(GRAY); });
+      } else {
+        let marks = {};
+        try { marks = JSON.parse(String(a[5] || '{}')); } catch (_) {}
+        let nx = 0;
+        const cells = slots.map(function (s) {
+          const m = MARK[marks[s[0] + '_' + s[1] + '_' + s[2]]];
+          if (m && m[0] === '×') nx++;
+          return m || ['', GREEN];
+        });
+        row.push(String(a[9] || '') ? '提出済（締切後）' : '提出済', String(a[3]), (slots.length - nx) + '/' + slots.length, String(a[4]), String(a[6]));
+        cells.forEach(function (c) { row.push(c[0]); bg.push(c[1]); });
+      }
+      values.push(row); colors.push(bg);
+    });
+    // 講師に見せる場合は、別のスプレッドシート（番号の入った名簿を含まないもの）に書く。
+    // そのIDはコードに置かず、スクリプトのプロパティ「SHARE_ID」に入れる（リポジトリは公開のため）
+    const shareId = PropertiesService.getScriptProperties().getProperty('SHARE_ID');
+    const target = shareId ? SpreadsheetApp.openById(shareId) : ss;
+    let sh = target.getSheetByName(CONFIG.OVERVIEW) || target.insertSheet(CONFIG.OVERVIEW);
+    sh.clear();
+    if (sh.getMaxColumns() < nCols) sh.insertColumnsAfter(sh.getMaxColumns(), nCols - sh.getMaxColumns());
+    sh.getRange(1, 1, 2, nCols).setValues([head1, head2]).setBackground('#dddddd').setFontWeight('bold').setHorizontalAlignment('center');
+    sh.getRange(3, 1, values.length, nCols).setValues(values).setBackgrounds(colors);
+    sh.getRange(3, FIX.length + 1, values.length, slots.length).setHorizontalAlignment('center');
+    sh.setColumnWidths(FIX.length + 1, slots.length, 26);
+    sh.setColumnWidth(1, 90); sh.setColumnWidth(3, 110); sh.setColumnWidth(4, 130); sh.setColumnWidth(7, 160);
+    sh.setFrozenRows(2); sh.setFrozenColumns(3);
+    // 曜日の区切りに縦線を入れる
+    for (let i = 0; i < slots.length; i += CONFIG.KOMAS.length) {
+      sh.getRange(1, FIX.length + 1 + i, values.length + 2, 1).setBorder(null, true, null, null, null, null, '#888888', SpreadsheetApp.BorderStyle.SOLID);
+    }
+  } catch (err) {
+    if (loud) throw err;
+  }
 }
 
 function json_(obj) {
